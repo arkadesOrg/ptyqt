@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+      - uses: lukka/run-vcpkg@v11
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -23,5 +23,15 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
-      - run: cmake -B build -G Ninja
-      - run: cmake --build build
+      - name: Install dependencies
+        run: vcpkg install winpty:x64-windows
+      
+      - name: Build dependencies
+      - run: |
+          cmake -B build -G Ninja ^
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+      - name: Configure PtyQt
+        run: cmake -B build -G Ninja
+
+      - name: Build PtyQt
+        run: cmake --build build
