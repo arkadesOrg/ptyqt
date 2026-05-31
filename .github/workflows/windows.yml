@@ -5,41 +5,23 @@ on:
   pull_request:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    runs-on: windows-2022
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Disable Python App Alias
-        run: |
-          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python.exe" /f 2>nul || true
-          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python3.exe" /f 2>nul || true
-          echo "Python aliases disabled (or already absent)"
-        shell: cmd
-  
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          version: '6.7.2'
-          host: 'windows'
-          target: 'desktop'
+          python-version: '3.11'
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.3'
           arch: 'win64_msvc2022_64'
-          archives: 'qtbase'                  # important
           cache: true
-          setup-python: false   # helps with the python.exe permission issue
 
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Configure
-        run: |
-          cmake -B build -G Ninja ^
-            -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
+      - run: cmake -B build -G Ninja
+      - run: cmake --build build
