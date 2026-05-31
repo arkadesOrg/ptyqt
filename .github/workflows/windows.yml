@@ -12,10 +12,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Disable Python App Alias (fixes permission error)
+      - name: Disable Python App Alias
         run: |
-          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python.exe" /f || echo "OK"
-          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python3.exe" /f || echo "OK"
+          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python.exe" /f 2>nul || true
+          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python3.exe" /f 2>nul || true
+          echo "Python aliases disabled (or already absent)"
         shell: cmd
   
       - name: Install Qt
