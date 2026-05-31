@@ -11,7 +11,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      
+      - name: Disable Python App Alias (fixes permission error)
+        run: |
+          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python.exe" /f || echo "OK"
+          reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\python3.exe" /f || echo "OK"
+        shell: cmd
+  
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -19,6 +25,9 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          archives: 'qtbase'                  # important
+          cache: true
+          setup-python: false   # helps with the python.exe permission issue
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
