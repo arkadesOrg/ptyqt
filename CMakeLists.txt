@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5.0)
+cmake_minimum_required(VERSION 3.10.0)
 
 project(ptyqt VERSION 0.6.5 LANGUAGES CXX)
 
@@ -48,18 +48,21 @@ if (MSVC)
     endif()
 endif()
 
-#dependencies
-find_package(Qt5Core REQUIRED)
+# Dependencies
+find_package(Qt6 REQUIRED COMPONENTS Core)
 
 if (MSVC)
-    find_library(WINPTY_LIBRARIES NAMES winpty)
-    find_package(Qt5Network REQUIRED)
-	
-	message("WINPTY_LIBRARIES ${WINPTY_LIBRARIES}")
+    find_package(Qt6 REQUIRED COMPONENTS Network)
 
-    if ("${WINPTY_LIBRARIES}" STREQUAL "")
-        message(FATAL "WinPty libs not set!")
-	endif()
+    find_library(WINPTY_LIBRARY
+        NAMES winpty
+    )
+
+    message(STATUS "WINPTY_LIBRARY = ${WINPTY_LIBRARY}")
+
+    if (NOT WINPTY_LIBRARY)
+        message(FATAL_ERROR "winpty library not found!")
+    endif()
 endif()
 
 #install

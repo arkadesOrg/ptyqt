@@ -88,10 +88,10 @@ elseif(UNIX AND NOT APPLE)
 endif()
 
 #link
-target_link_libraries(ptyqt Qt5::Core ${ADDITIONAL_LIBS})
+target_link_libraries(ptyqt Qt6::Core ${ADDITIONAL_LIBS})
 
 if (MSVC)
-    target_link_libraries( ptyqt Qt5::Network ${WINPTY_LIBRARIES})
+    target_link_libraries( ptyqt Qt6::Network ${WINPTY_LIBRARIES})
 endif()
 
 if("${BUILD_TYPE}" STREQUAL "STATIC")

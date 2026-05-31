@@ -2,7 +2,7 @@ project(ptyqt-tests)
 
 enable_testing()
 
-find_package(Qt5Test REQUIRED)
+find_package(Qt6Test REQUIRED)
 
 add_executable(ptyqt_tests ptyqt_tests.cpp)
 add_dependencies(ptyqt_tests ptyqt)
@@ -16,10 +16,10 @@ if (MSVC)
     endif()
 endif()
 
-target_link_libraries(ptyqt_tests ptyqt Qt5::Core Qt5::Test)
+target_link_libraries(ptyqt_tests ptyqt Qt6::Core Qt6::Test)
 
 if (MSVC)
-    target_link_libraries(ptyqt_tests Qt5::Network ${WINPTY_LIBS})
+    target_link_libraries(ptyqt_tests Qt6::Network ${WINPTY_LIBS})
 endif()
 
 foreach( file_i ${WINPTY_DIST_FILES})
