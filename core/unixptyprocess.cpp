@@ -265,7 +265,7 @@ bool UnixPtyProcess::kill()
 
         if (m_shellProcess.state() == QProcess::Running)
         {
-            QProcess::startDetached( QString("kill -9 %1").arg( pid() ) );
+            QProcess::startDetached( QString("kill -9 %1").arg( pid() ), QStringList() );
             m_shellProcess.kill();
             m_shellProcess.waitForFinished(1000);
         }
