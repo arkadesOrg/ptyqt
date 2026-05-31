@@ -27,7 +27,7 @@ jobs:
         run: vcpkg install winpty:x64-windows
       
       - name: Build dependencies
-      - run: |
+        run: |
           cmake -B build -G Ninja ^
             -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
       - name: Configure PtyQt
