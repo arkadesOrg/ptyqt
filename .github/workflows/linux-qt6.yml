@@ -1,8 +1,7 @@
 name: Linux Qt6 Build
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
