@@ -10,7 +10,9 @@ set(CMAKE_AUTOMOC ON)
 #available params:
 # - NO_BUILD_TESTS=1
 # - NO_BUILD_EXAMPLES=1
-IF("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
+# - PTYQT_ENABLE_DEBUG=ON (enable backend diagnostics without changing build type)
+option(PTYQT_ENABLE_DEBUG "Enable PTYQt diagnostics independently of build type" OFF)
+if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug" OR PTYQT_ENABLE_DEBUG)
     set(PTYQT_DEBUG TRUE)
     add_definitions(-DPTYQT_DEBUG)
 else()

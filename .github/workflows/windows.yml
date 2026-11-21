@@ -37,7 +37,7 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DNO_BUILD_EXAMPLES=1 -DNO_BUILD_TESTS=0
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DPTYQT_ENABLE_DEBUG=ON -DNO_BUILD_EXAMPLES=1 -DNO_BUILD_TESTS=0
 
       - name: Build
         run: cmake --build build --parallel
