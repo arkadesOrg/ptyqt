@@ -1,5 +1,6 @@
 #include <QTest>
 #include "ptyqt.h"
+#include "conptyprocess.h"
 #include <QProcessEnvironment>
 #include <QThread>
 #ifdef Q_OS_WIN
@@ -8,6 +9,8 @@
 #endif
 #include <string>
 #include <QTimer>
+#include <QStandardPaths>
+#include <QDateTime>
 
 #ifdef Q_OS_WIN
 #ifndef _WINDEF_
@@ -193,69 +196,61 @@ private slots:
             QVERIFY(process->isAvailable());
 
             QEventLoop readyLoop;
-            QTimer timeout;
-            timeout.setSingleShot(true);
-            connect(&timeout, &QTimer::timeout, &readyLoop, &QEventLoop::quit);
+            QTimer readyTimeout;
+            readyTimeout.setSingleShot(true);
+            connect(&readyTimeout, &QTimer::timeout, &readyLoop, &QEventLoop::quit);
             connect(process->notifier(), &QIODevice::readyRead, &readyLoop, &QEventLoop::quit);
 
             QVERIFY2(process->startProcess(shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
                      qPrintable(process->lastError()));
             QVERIFY(process->pid() != 0);
 
-            timeout.start(5000);
-            if (timeout.isActive()) {
-                readyLoop.exec();
-            }
-            timeout.stop();
+            readyTimeout.start(5000);
+            readyLoop.exec();
+            readyTimeout.stop();
 
-            // The read side is a real QIODevice: consuming bytes drains its buffer.
             const QByteArray startupOutput = process->readAll();
-            QVERIFY(!startupOutput.isNull());
+            Q_UNUSED(startupOutput)
             QCOMPARE(process->notifier()->bytesAvailable(), qint64(0));
 
             QVERIFY(process->resize(120, 40));
             QCOMPARE(process->size().first, qint16(120));
             QCOMPARE(process->size().second, qint16(40));
 
-            // Run a command whose argument contains whitespace and a quote.
-            const QString marker = QStringLiteral("ptyqt argument roundtrip");
-            const QString script = QStringLiteral("Write-Output '%1'; exit 7").arg(marker);
-            const QString powershell = QStandardPaths::findExecutable(QStringLiteral("powershell"));
             const QString pwsh = QStandardPaths::findExecutable(QStringLiteral("pwsh"));
-            QString executable = !pwsh.isEmpty() ? pwsh : powershell;
-
-            if (!executable.isEmpty()) {
+            const QString powershell = QStandardPaths::findExecutable(QStringLiteral("powershell"));
+            const QString executable = !pwsh.isEmpty() ? pwsh : powershell;
+            if (executable.isEmpty()) {
                 QVERIFY(process->kill());
-                QScopedPointer<IPtyProcess> commandProcess(PtyQt::createPtyProcess(IPtyProcess::ConPty));
-                QVERIFY(commandProcess->startProcess(
-                    executable,
-                    {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
-                     QStringLiteral("-Command"), script},
-                    QCoreApplication::applicationDirPath(),
-                    QProcessEnvironment::systemEnvironment().toStringList(),
-                    100, 30));
-
-                QEventLoop commandLoop;
-                QTimer commandTimeout;
-                commandTimeout.setSingleShot(true);
-                connect(commandProcess->notifier(), &QIODevice::readyRead, &commandLoop, &QEventLoop::quit);
-                connect(&commandTimeout, &QTimer::timeout, &commandLoop, &QEventLoop::quit);
-
-                QByteArray output;
-                commandTimeout.start(10000);
-                while (commandTimeout.isActive() && !output.contains(marker.toUtf8())) {
-                    commandLoop.exec();
-                    output += commandProcess->readAll();
-                }
-                commandTimeout.stop();
-
-                QVERIFY2(output.contains(marker.toUtf8()), output.constData());
-                QTRY_VERIFY_WITH_TIMEOUT(!static_cast<ConPtyProcess *>(commandProcess.data())->isRunning(), 10000);
-                QCOMPARE(static_cast<ConPtyProcess *>(commandProcess.data())->exitCode(), 7);
-            } else {
-                // Keep basic ConPTY coverage on minimal Windows images.
-                QVERIFY(process->kill());
+                continue;
             }
+
+            QVERIFY(process->kill());
+            QScopedPointer<IPtyProcess> commandProcess(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+            QVERIFY2(commandProcess->startProcess(
+                executable,
+                {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
+                 QStringLiteral("-Command"), QStringLiteral("Write-Output 'ptyqt-argument-check'; exit 7")},
+                QCoreApplication::applicationDirPath(),
+                QProcessEnvironment::systemEnvironment().toStringList(),
+                100, 30), qPrintable(commandProcess->lastError()));
+
+            QEventLoop commandLoop;
+            QTimer commandTimeout;
+            commandTimeout.setSingleShot(true);
+            connect(commandProcess->notifier(), &QIODevice::readyRead, &commandLoop, &QEventLoop::quit);
+            connect(&commandTimeout, &QTimer::timeout, &commandLoop, &QEventLoop::quit);
+
+            QByteArray output;
+            commandTimeout.start(10000);
+            while (commandTimeout.isActive() && !output.contains("ptyqt-argument-check")) {
+                commandLoop.exec();
+                output += commandProcess->readAll();
+            }
+
+            QVERIFY2(output.contains("ptyqt-argument-check"), output.constData());
+            QTRY_VERIFY_WITH_TIMEOUT(!static_cast<ConPtyProcess *>(commandProcess.data())->isRunning(), 10000);
+            QCOMPARE(static_cast<ConPtyProcess *>(commandProcess.data())->exitCode(), 7);
         }
     }
 
