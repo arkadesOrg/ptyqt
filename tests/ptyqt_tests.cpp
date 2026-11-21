@@ -322,7 +322,11 @@ private slots:
                     // written before the process handle became signalled.
                     QElapsedTimer drainTimer;
                     drainTimer.start();
-                    while (!output.contains(expectedOutput) && drainTimer.elapsed() < 1000) {
+                    // ConPTY can flush the final output after the process handle
+                    // is signalled. Keep draining independently of process state.
+                    // The hosted Windows runner delivered the final bytes just
+                    // over one second after process termination.
+                    while (!output.contains(expectedOutput) && drainTimer.elapsed() < 5000) {
                         output += commandProcess->readAll();
                         QTest::qWait(25);
                     }
