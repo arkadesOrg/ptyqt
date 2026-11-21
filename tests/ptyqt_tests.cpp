@@ -308,37 +308,46 @@ private slots:
 
             const QByteArray expectedOutput("ptyqt-argument-check");
             QByteArray output;
-            QElapsedTimer outputTimer;
-            outputTimer.start();
 
-            // Poll both the output buffer and process state. A short wait also
-            // services Qt events without waiting for pipe EOF when the child
-            // exits before producing the expected marker.
-            while (!output.contains(expectedOutput) && outputTimer.elapsed() < 10000) {
+            // Process termination and output-pipe completion are separate
+            // events. Keep collecting any output already available while the
+            // process monitor waits for the child to exit.
+            qInfo() << "[ConPTY] Waiting for CMD process exit";
+            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\\n",
+                         static_cast<unsigned long>(commandProcess->pid()));
+            std::fflush(stderr);
+            QElapsedTimer exitTimer;
+            exitTimer.start();
+            while (commandProcess->isRunning() && exitTimer.elapsed() < 10000) {
                 output += commandProcess->readAll();
-                if (!commandProcess->isRunning()) {
-                    // The process monitor and pipe reader are independent.
-                    // Allow the reader a brief window to drain bytes already
-                    // written before the process handle became signalled.
-                    QElapsedTimer drainTimer;
-                    drainTimer.start();
-                    // ConPTY can flush the final output after the process handle
-                    // is signalled. Keep draining independently of process state.
-                    // The hosted Windows runner delivered the final bytes just
-                    // over one second after process termination.
-                    while (!output.contains(expectedOutput) && drainTimer.elapsed() < 5000) {
-                        output += commandProcess->readAll();
-                        QTest::qWait(25);
-                    }
-                    break;
-                }
                 QTest::qWait(25);
             }
             output += commandProcess->readAll();
 
+            const bool processStopped = !commandProcess->isRunning();
+            const int exitCode = commandProcess->exitCode();
+            std::fprintf(stderr,
+                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d; %llu bytes before close\\n",
+                         processStopped ? 1 : 0,
+                         static_cast<long long>(exitTimer.elapsed()),
+                         exitCode,
+                         static_cast<unsigned long long>(output.size()));
+            std::fflush(stderr);
+            QVERIFY2(processStopped,
+                     "CMD process did not signal process-handle completion within 10 seconds");
+            qInfo() << "[ConPTY] Process exited with code" << exitCode;
+            QCOMPARE(exitCode, 7);
+
+            // ClosePseudoConsole may emit a final frame to the output pipe.
+            // kill() closes the pseudoconsole but keeps the reader thread alive
+            // until it has drained the pipe and observed its closure.
+            qInfo() << "[ConPTY] Closing pseudoconsole and draining final output";
+            QVERIFY2(commandProcess->kill(), "ConPTY resource cleanup failed");
+            output += commandProcess->readAll();
+
             qInfo().noquote() << "[ConPTY] Captured command output:"
                               << QString::fromLocal8Bit(output).trimmed();
-            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes: %s\n",
+            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes after close: %s\\n",
                          static_cast<unsigned long long>(output.size()),
                          output.constData());
             std::fflush(stderr);
@@ -346,30 +355,6 @@ private slots:
                      qPrintable(QStringLiteral("Expected marker was not received; captured output: %1")
                                     .arg(QString::fromLocal8Bit(output))));
 
-            qInfo() << "[ConPTY] Waiting for CMD process exit";
-            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\n",
-                         static_cast<unsigned long>(commandProcess->pid()));
-            std::fflush(stderr);
-            QElapsedTimer exitTimer;
-            exitTimer.start();
-            while (commandProcess->isRunning() && exitTimer.elapsed() < 10000) {
-                QTest::qWait(50);
-            }
-            const bool processStopped = !commandProcess->isRunning();
-            const int exitCode = commandProcess->exitCode();
-            std::fprintf(stderr,
-                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d\n",
-                         processStopped ? 1 : 0,
-                         static_cast<long long>(exitTimer.elapsed()),
-                         exitCode);
-            std::fflush(stderr);
-            QVERIFY2(processStopped,
-                     "CMD process did not signal process-handle completion within 10 seconds");
-            qInfo() << "[ConPTY] Process exited with code" << exitCode;
-            QCOMPARE(exitCode, 7);
-
-            qInfo() << "[ConPTY] Releasing process and pseudo-console resources";
-            QVERIFY2(commandProcess->kill(), "ConPTY resource cleanup failed");
             qInfo() << "[ConPTY] All smoke checks passed for" << shellPath;
         }
     }
