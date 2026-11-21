@@ -49,13 +49,13 @@ std::vector<wchar_t> makeEnvironmentBlock(const QStringList &environment)
     for (const QString &entry : entries) {
         const std::wstring wideEntry = entry.toStdWString();
         block.insert(block.end(), wideEntry.cbegin(), wideEntry.cend());
-        block.push_back(L'\\0');
+        block.push_back(L'\0');
     }
 
     if (block.empty()) {
-        block.push_back(L'\\0');
+        block.push_back(L'\0');
     }
-    block.push_back(L'\\0');
+    block.push_back(L'\0');
     return block;
 }
 }
@@ -296,7 +296,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
         commandLine += quoteWindowsArgument(argument);
     }
     std::vector<wchar_t> mutableCommandLine(commandLine.cbegin(), commandLine.cend());
-    mutableCommandLine.push_back(L'\\0');
+    mutableCommandLine.push_back(L'\0');
 
     const std::wstring nativeExecutable = executablePath.toStdWString();
     const std::wstring nativeDirectory = currentDirectory.toStdWString();
