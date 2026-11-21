@@ -15,6 +15,8 @@
 #define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE ProcThreadAttributeValue(22, FALSE, TRUE, FALSE)
 typedef VOID *HPCON;
 #define TOO_OLD_WINSDK
+#else
+#define KPTY_HAVE_CONPTY_SDK
 #endif
 
 class WindowsContext
