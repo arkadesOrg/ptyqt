@@ -48,7 +48,7 @@ void testMessageHandler(QtMsgType type, const QMessageLogContext &, const QStrin
     const QByteArray utf8Message = message.toUtf8();
     std::fprintf(stderr, "[Qt %s] ", typeName);
     std::fwrite(utf8Message.constData(), 1, static_cast<size_t>(utf8Message.size()), stderr);
-    std::fputc('\\n', stderr);
+    std::fputc('\n', stderr);
     std::fflush(stderr);
 }
 
