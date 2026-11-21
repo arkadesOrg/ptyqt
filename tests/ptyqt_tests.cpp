@@ -273,9 +273,7 @@ private slots:
             // host-specific command semantics.
             const QString executable = shellPath;
             qInfo().noquote() << "[ConPTY] Using command interpreter:" << executable;
-            std::fprintf(stderr, "[ConPTY test] Using CMD interpreter: %s\n",
-                         executable.toLocal8Bit().constData());
-            std::fflush(stderr);
+            qDebug().noquote() << "[ConPTY test] Using CMD interpreter:" << executable;
 
             qInfo() << "[ConPTY] Closing interactive shell";
             QVERIFY2(process->kill(), "Could not close the interactive ConPTY shell");
@@ -305,11 +303,8 @@ private slots:
             qInfo().noquote() << "[ConPTY] CMD working directory:" << probeWorkingDirectory;
             qInfo() << "[ConPTY] CMD script exists:" << QFileInfo::exists(probeScriptPath)
                     << "size:" << QFileInfo(probeScriptPath).size();
-            std::fprintf(stderr, "[ConPTY test] Script path: %s\n",
-                         probeScriptPath.toLocal8Bit().constData());
-            std::fprintf(stderr, "[ConPTY test] Working directory: %s\n",
-                         probeWorkingDirectory.toLocal8Bit().constData());
-            std::fflush(stderr);
+            qDebug().noquote() << "[ConPTY test] Script path:" << probeScriptPath;
+            qDebug().noquote() << "[ConPTY test] Working directory:" << probeWorkingDirectory;
 
             const QStringList arguments{
                 QStringLiteral("/D"),
@@ -324,9 +319,7 @@ private slots:
                 QProcessEnvironment::systemEnvironment().toStringList(),
                 100, 30), qPrintable(commandProcess->lastError()));
             qInfo() << "[ConPTY] Test process started with PID" << commandProcess->pid();
-            std::fprintf(stderr, "[ConPTY test] CMD probe started: PID %lu\n",
-                         static_cast<unsigned long>(commandProcess->pid()));
-            std::fflush(stderr);
+            qDebug() << "[ConPTY test] CMD probe started: PID" << commandProcess->pid();
 
             const QByteArray expectedOutput("ptyqt-argument-check");
             QByteArray output;
@@ -335,9 +328,8 @@ private slots:
             // events. Keep collecting any output already available while the
             // process monitor waits for the child to exit.
             qInfo() << "[ConPTY] Waiting for CMD process exit";
-            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\n",
-                         static_cast<unsigned long>(commandProcess->pid()));
-            std::fflush(stderr);
+            qDebug() << "[ConPTY test] Waiting up to 10 seconds for PID"
+                     << commandProcess->pid() << "to exit";
             QElapsedTimer exitTimer;
             exitTimer.start();
             while (commandProcess->isRunning() && exitTimer.elapsed() < 10000) {
@@ -348,13 +340,11 @@ private slots:
 
             const bool processStopped = !commandProcess->isRunning();
             const int exitCode = commandProcess->exitCode();
-            std::fprintf(stderr,
-                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d; %llu bytes before close\n",
-                         processStopped ? 1 : 0,
-                         static_cast<long long>(exitTimer.elapsed()),
-                         exitCode,
-                         static_cast<unsigned long long>(output.size()));
-            std::fflush(stderr);
+            qDebug() << "[ConPTY test] Exit wait finished:"
+                     << "stopped=" << processStopped
+                     << "elapsed=" << exitTimer.elapsed() << "ms"
+                     << "exitCode=" << exitCode
+                     << "bytes before close=" << output.size();
             QVERIFY2(processStopped,
                      "CMD process did not signal process-handle completion within 10 seconds");
             qInfo() << "[ConPTY] Process exited with code" << exitCode;
@@ -369,10 +359,8 @@ private slots:
 
             qInfo().noquote() << "[ConPTY] Captured command output:"
                               << QString::fromLocal8Bit(output).trimmed();
-            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes after close: %s\n",
-                         static_cast<unsigned long long>(output.size()),
-                         output.constData());
-            std::fflush(stderr);
+            qDebug().noquote() << "[ConPTY test] Captured" << output.size()
+                               << "bytes after close:" << QString::fromLocal8Bit(output);
             QVERIFY2(output.contains(expectedOutput),
                      qPrintable(QStringLiteral("Expected marker was not received; captured output: %1")
                                     .arg(QString::fromLocal8Bit(output))));
