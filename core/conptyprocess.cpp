@@ -26,7 +26,7 @@ std::wstring quoteWindowsArgument(const QString &argument)
     // metacharacters; the remaining escaping follows the standard Windows
     // backslash-before-quote rules.
     if (!value.empty()
-        && value.find_first_of(L" \\t\\n\\v\\\"&|<>^()%!") == std::wstring::npos) {
+        && value.find_first_of(L" \t\n\v\"&|<>^()%!") == std::wstring::npos) {
         return value;
     }
 
@@ -311,7 +311,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     mutableCommandLine.push_back(L'\0');
 
     const QByteArray printableCommandLine = QString::fromStdWString(commandLine).toUtf8();
-    std::fprintf(stderr, "[ConPTY] CreateProcessW command line: %s\\n",
+    std::fprintf(stderr, "[ConPTY] CreateProcessW command line: %s\n",
                  printableCommandLine.constData());
     std::fflush(stderr);
 
