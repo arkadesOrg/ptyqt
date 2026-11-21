@@ -89,7 +89,6 @@ private:
     HRESULT initializeStartupInfoAttachedToPseudoConsole(STARTUPINFOEX *startupInfo, HPCON pty);
     void closeHandles();
     static QString resolveExecutable(const QString &program);
-    void finishReaderThread();
 
     WindowsContext m_winContext;
     HPCON m_ptyHandler = nullptr;
