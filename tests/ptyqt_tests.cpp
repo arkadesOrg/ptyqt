@@ -31,6 +31,27 @@ typedef unsigned long DWORD;
 //increase it for visual control each shell
 #define DEBUG_SLEEP_SEC 1
 
+// Qt's default Windows message handler may write to the console/debugger
+// instead of the redirected standard-error stream captured by CTest.
+// Route test diagnostics explicitly to stderr so CI output is deterministic.
+void testMessageHandler(QtMsgType type, const QMessageLogContext &, const QString &message)
+{
+    const char *typeName = "unknown";
+    switch (type) {
+    case QtDebugMsg: typeName = "debug"; break;
+    case QtInfoMsg: typeName = "info"; break;
+    case QtWarningMsg: typeName = "warning"; break;
+    case QtCriticalMsg: typeName = "critical"; break;
+    case QtFatalMsg: typeName = "fatal"; break;
+    }
+
+    const QByteArray utf8Message = message.toUtf8();
+    std::fprintf(stderr, "[Qt %s] ", typeName);
+    std::fwrite(utf8Message.constData(), 1, static_cast<size_t>(utf8Message.size()), stderr);
+    std::fputc('\\n', stderr);
+    std::fflush(stderr);
+}
+
 void sleepByEventLoop(int seconds)
 {
     QEventLoop sleepLoop;
@@ -116,6 +137,7 @@ class PtyQtTests : public QObject
 private slots:
     void initTestCase()
     {
+        qInstallMessageHandler(testMessageHandler);
         qInfo().noquote() << "[ptyqt] Test suite starting on"
                           << QSysInfo::productType() << QSysInfo::productVersion()
                           << "(Qt" << QT_VERSION_STR << ")";
