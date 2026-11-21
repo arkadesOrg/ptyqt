@@ -13,32 +13,31 @@ jobs:
         with:
           submodules: recursive
 
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolset: '14.44'
+
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.7.3'
-          arch: 'win64_msvc2019_64'
+          version: '6.8.3'
+          arch: 'win64_msvc2022_64'
           cache: true
-          modules: 'qtwebsockets'
-
-      - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Bootstrap vcpkg
-        shell: cmd
+        shell: pwsh
         run: |
-          if not exist C:\vcpkg\vcpkg.exe C:\vcpkg\bootstrap-vcpkg.bat
+          if (-not (Test-Path 'C:\vcpkg\vcpkg.exe')) {
+            & 'C:\vcpkg\bootstrap-vcpkg.bat'
+          }
 
       - name: Install winpty
-        shell: cmd
-        run: C:\vcpkg\vcpkg.exe install winpty:x64-windows
+        shell: pwsh
+        run: '& C:\vcpkg\vcpkg.exe install winpty:x64-windows'
 
       - name: Configure
         shell: pwsh
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_BUILD_TYPE=Release
-          -DNO_BUILD_EXAMPLES=1
-          -DNO_BUILD_TESTS=0
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DCMAKE_BUILD_TYPE=Release -DNO_BUILD_EXAMPLES=1 -DNO_BUILD_TESTS=0
 
       - name: Build
         run: cmake --build build --parallel
