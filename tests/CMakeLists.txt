@@ -9,6 +9,17 @@ add_dependencies(ptyqt_tests ptyqt)
 add_test(NAME ptyqt_tests COMMAND ptyqt_tests)
 
 if (MSVC)
+    # Windows does not search the sibling core/ directory when loading the test
+    # executable. Deploy the shared library beside the test binary.
+    add_custom_command(
+        TARGET ptyqt_tests
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:ptyqt>"
+            "$<TARGET_FILE_DIR:ptyqt_tests>"
+        COMMENT "Deploy ptyqt runtime library for tests"
+    )
+
     if ("${PTYQT_DEBUG}")
         set(WINPTY_DEBUG_SERVER_PATH ${WINPTY_ROOT_DIR}/${TARGET_ARCH}/bin/winpty-debugserver.exe)
         add_definitions(-DWINPTY_DEBUG_SRV_PATH="${WINPTY_DEBUG_SERVER_PATH}")
