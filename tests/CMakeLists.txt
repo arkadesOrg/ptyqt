@@ -11,7 +11,7 @@ if (MSVC)
     # Keep the Windows CI gate focused on the ConPTY backend. The legacy
     # WinPTY test remains available as "ptyqt_tests winpty", but currently
     # waits indefinitely for shell output on hosted Windows runners.
-    add_test(NAME ptyqt_tests COMMAND ptyqt_tests conpty)
+    add_test(NAME ptyqt_tests COMMAND ptyqt_tests conpty -v2)
 else()
     add_test(NAME ptyqt_tests COMMAND ptyqt_tests)
 endif()
