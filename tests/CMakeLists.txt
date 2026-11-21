@@ -6,7 +6,7 @@ find_package(Qt6Test REQUIRED)
 
 add_executable(ptyqt_tests ptyqt_tests.cpp)
 add_dependencies(ptyqt_tests ptyqt)
-add_test(ptyqt_tests ptyqt_tests)
+add_test(NAME ptyqt_tests COMMAND ptyqt_tests)
 
 if (MSVC)
     if ("${PTYQT_DEBUG}")
