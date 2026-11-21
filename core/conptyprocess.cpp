@@ -245,7 +245,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
         return false;
     }
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
-    if (isRunning() || m_ptyHandler || m_readThread) {
+    if (isRunning() || m_ptyHandler || m_readThread || m_processThread) {
         m_lastError = QStringLiteral("A ConPTY process is already running");
         return false;
     }
