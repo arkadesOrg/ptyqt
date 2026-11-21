@@ -4,6 +4,8 @@
 #include <QString>
 #include <QDebug>
 
+class QThread;
+
 #ifdef Q_OS_WIN
 #include <QLocalSocket>
 #endif
