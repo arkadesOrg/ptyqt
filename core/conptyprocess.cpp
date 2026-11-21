@@ -368,8 +368,6 @@ bool ConPtyProcess::resize(qint16 cols, qint16 rows)
 
 bool ConPtyProcess::kill()
 {
-    // Serialize start/resize/write/stop operations. The ConPTY reader itself
-    // does not take this lock, so it can drain output while we wait here.
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
     const bool hadProcess = m_ptyHandler || m_processInfo.hProcess || m_readThread;
     if (!hadProcess) {
@@ -383,14 +381,19 @@ bool ConPtyProcess::kill()
     }
 #endif
 
-    // Give the process a chance to exit naturally after closing the console.
-    if (m_processInfo.hProcess) {
-        const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
-        if (waitResult == WAIT_TIMEOUT) {
+    // ConPTY close is asynchronous; wait for the pipe reader to drain remaining
+    // output before closing the read handle. Escalate only if the child stays alive.
+    if (m_readThread && !m_readThread->wait(1500)) {
+        if (m_processInfo.hProcess && WaitForSingleObject(m_processInfo.hProcess, 0) == WAIT_TIMEOUT) {
             TerminateProcess(m_processInfo.hProcess, 1);
-            WaitForSingleObject(m_processInfo.hProcess, INFINITE);
         }
+        if (m_hPipeIn != INVALID_HANDLE_VALUE) {
+            CancelIoEx(m_hPipeIn, nullptr);
+        }
+        m_readThread->wait();
+    }
 
+    if (m_processInfo.hProcess) {
         DWORD code = static_cast<DWORD>(-1);
         if (GetExitCodeProcess(m_processInfo.hProcess, &code)) {
             m_exitCode.store(static_cast<int>(code));
@@ -398,7 +401,6 @@ bool ConPtyProcess::kill()
     }
 
     if (m_readThread) {
-        m_readThread->wait();
         delete m_readThread;
         m_readThread = nullptr;
     }
