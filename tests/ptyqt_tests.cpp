@@ -260,8 +260,9 @@ private slots:
             QScopedPointer<ConPtyProcess> commandProcess(new ConPtyProcess);
             const QStringList arguments{
                 QStringLiteral("/D"),
+                QStringLiteral("/S"),
                 QStringLiteral("/C"),
-                QStringLiteral("echo ptyqt-argument-check & exit /b 7")
+                QStringLiteral("echo ptyqt-argument-check & exit 7")
             };
             qInfo() << "[ConPTY] Launching argument/working-directory test process";
             QVERIFY2(commandProcess->startProcess(
