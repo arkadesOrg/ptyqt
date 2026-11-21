@@ -59,9 +59,9 @@ bool WinPtyProcess::startProcess(const QString &shellPath, QStringList environme
         environment.append(QString("%1=1").arg(DEBUG_VAR_LEGACY));
         environment.append(QString("%1=trace").arg(DEBUG_VAR_ACTUAL));
         environment.append(QString("%1=1").arg(SHOW_CONSOLE_VAR));
-        SetEnvironmentVariable(DEBUG_VAR_LEGACY, "1");
-        SetEnvironmentVariable(DEBUG_VAR_ACTUAL, "trace");
-        SetEnvironmentVariable(SHOW_CONSOLE_VAR, "1");
+        SetEnvironmentVariableW(L"WINPTYDBG", L"1");
+        SetEnvironmentVariableW(L"WINPTY_DEBUG", L"trace");
+        SetEnvironmentVariableW(L"WINPTY_SHOW_CONSOLE", L"1");
     }
 #endif
 
