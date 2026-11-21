@@ -36,37 +36,31 @@ void sleepByEventLoop(int seconds)
 }
 
 #ifdef Q_OS_WIN
-DWORD findProcessId(const std::string& processName, int parentProcessId = 0)
+DWORD findProcessId(const QString &processName, int parentProcessId = 0)
 {
-    PROCESSENTRY32 processInfo;
+    PROCESSENTRY32W processInfo{};
     processInfo.dwSize = sizeof(processInfo);
 
-    HANDLE processesSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+    HANDLE processesSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (processesSnapshot == INVALID_HANDLE_VALUE)
     {
         return 0;
     }
 
-    Process32First(processesSnapshot, &processInfo);
-    if (!processName.compare(processInfo.szExeFile))
+    if (Process32FirstW(processesSnapshot, &processInfo))
     {
-        if (parentProcessId == 0 || parentProcessId == processInfo.th32ParentProcessID)
+        do
         {
-            CloseHandle(processesSnapshot);
-            return processInfo.th32ProcessID;
-        }
-    }
-
-    while (Process32Next(processesSnapshot, &processInfo))
-    {
-        if (!processName.compare(processInfo.szExeFile))
-        {
-            if (parentProcessId == 0 || parentProcessId == processInfo.th32ParentProcessID)
+            const QString executableName = QString::fromWCharArray(processInfo.szExeFile);
+            if (processName.compare(executableName, Qt::CaseInsensitive) == 0
+                && (parentProcessId == 0 || parentProcessId == static_cast<int>(processInfo.th32ParentProcessID)))
             {
+                const DWORD processId = processInfo.th32ProcessID;
                 CloseHandle(processesSnapshot);
-                return processInfo.th32ProcessID;
+                return processId;
             }
         }
+        while (Process32NextW(processesSnapshot, &processInfo));
     }
 
     CloseHandle(processesSnapshot);
@@ -75,7 +69,7 @@ DWORD findProcessId(const std::string& processName, int parentProcessId = 0)
 
 void killProcessByName(QString processName)
 {
-    if (findProcessId(processName.toStdString()))
+    if (findProcessId(processName))
     {
         system(QString("taskkill /im %1 /f").arg(processName).toStdString().c_str());
         sleepByEventLoop(1);
@@ -226,7 +220,8 @@ private slots:
             }
 
             QVERIFY(process->kill());
-            QScopedPointer<IPtyProcess> commandProcess(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+            // Exercise the ConPTY-specific overload that accepts arguments and a working directory.
+            QScopedPointer<ConPtyProcess> commandProcess(new ConPtyProcess);
             QVERIFY2(commandProcess->startProcess(
                 executable,
                 {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
@@ -249,8 +244,8 @@ private slots:
             }
 
             QVERIFY2(output.contains("ptyqt-argument-check"), output.constData());
-            QTRY_VERIFY_WITH_TIMEOUT(!static_cast<ConPtyProcess *>(commandProcess.data())->isRunning(), 10000);
-            QCOMPARE(static_cast<ConPtyProcess *>(commandProcess.data())->exitCode(), 7);
+            QTRY_VERIFY_WITH_TIMEOUT(!commandProcess->isRunning(), 10000);
+            QCOMPARE(commandProcess->exitCode(), 7);
         }
     }
 
