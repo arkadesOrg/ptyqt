@@ -275,18 +275,19 @@ private slots:
                          static_cast<unsigned long>(commandProcess->pid()));
             std::fflush(stderr);
 
-            QEventLoop commandLoop;
-            QTimer commandTimeout;
-            commandTimeout.setSingleShot(true);
-            connect(commandProcess->notifier(), &QIODevice::readyRead, &commandLoop, &QEventLoop::quit);
-            connect(&commandTimeout, &QTimer::timeout, &commandLoop, &QEventLoop::quit);
-
             const QByteArray expectedOutput("ptyqt-argument-check");
             QByteArray output;
-            commandTimeout.start(10000);
-            while (commandTimeout.isActive() && !output.contains(expectedOutput)) {
-                commandLoop.exec();
+            QElapsedTimer outputTimer;
+            outputTimer.start();
+
+            // Poll both the output buffer and process state. A short wait also
+            // services Qt events without waiting for pipe EOF when the child
+            // exits before producing the expected marker.
+            while (!output.contains(expectedOutput)
+                   && commandProcess->isRunning()
+                   && outputTimer.elapsed() < 10000) {
                 output += commandProcess->readAll();
+                QTest::qWait(25);
             }
             output += commandProcess->readAll();
 

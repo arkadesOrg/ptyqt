@@ -19,6 +19,17 @@ namespace
 std::wstring quoteWindowsArgument(const QString &argument)
 {
     const std::wstring value = argument.toStdWString();
+
+    // Do not quote simple switches such as CMD's /D and /C. CMD has its own
+    // command-line parser and does not treat quoted switches like a CRT argv
+    // parser would. Quote values containing whitespace, quotes, or CMD
+    // metacharacters; the remaining escaping follows the standard Windows
+    // backslash-before-quote rules.
+    if (!value.empty()
+        && value.find_first_of(L" \\t\\n\\v\\\"&|<>^()%!") == std::wstring::npos) {
+        return value;
+    }
+
     std::wstring result(1, L'"');
     size_t backslashes = 0;
 
@@ -298,6 +309,11 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     }
     std::vector<wchar_t> mutableCommandLine(commandLine.cbegin(), commandLine.cend());
     mutableCommandLine.push_back(L'\0');
+
+    const QByteArray printableCommandLine = QString::fromStdWString(commandLine).toUtf8();
+    std::fprintf(stderr, "[ConPTY] CreateProcessW command line: %s\\n",
+                 printableCommandLine.constData());
+    std::fflush(stderr);
 
     const std::wstring nativeExecutable = executablePath.toStdWString();
     const std::wstring nativeDirectory = currentDirectory.toStdWString();
