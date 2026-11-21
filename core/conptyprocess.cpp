@@ -381,9 +381,18 @@ bool ConPtyProcess::kill()
     }
 #endif
 
-    if (m_processInfo.hProcess && WaitForSingleObject(m_processInfo.hProcess, 0) == WAIT_TIMEOUT) {
-        TerminateProcess(m_processInfo.hProcess, 1);
-        WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+    // Closing the pseudo console signals EOF to the reader. Give a naturally
+    // exiting child a chance to finish before terminating it.
+    if (m_processInfo.hProcess) {
+        const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
+        if (waitResult == WAIT_TIMEOUT) {
+            TerminateProcess(m_processInfo.hProcess, 1);
+            WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+        }
+        DWORD code = static_cast<DWORD>(-1);
+        if (GetExitCodeProcess(m_processInfo.hProcess, &code)) {
+            m_exitCode.store(static_cast<int>(code));
+        }
     }
 
     if (m_readThread) {
