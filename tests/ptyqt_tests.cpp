@@ -172,89 +172,90 @@ private slots:
     }
 #endif
 
-    //windows unit tests
+    // Windows unit tests
 #ifdef Q_OS_WIN
-
-    //ConPty available only on Windows 10 released after 1903 (19H1) Windows release
     void conpty()
     {
-        qint32 buildNumber = QSysInfo::kernelVersion().split(".").last().toInt();
-        if (buildNumber < CONPTY_MINIMAL_WINDOWS_VERSION)
-        {
-            qDebug() << QString("Your Windows version doesn't support ConPty. Minimal version: %1. Your version: %2").arg(CONPTY_MINIMAL_WINDOWS_VERSION).arg(buildNumber) << QSysInfo::kernelVersion();
-            return;
+        const int buildNumber = QSysInfo::kernelVersion().section(QLatin1Char('.'), -1).toInt();
+        if (buildNumber < CONPTY_MINIMAL_WINDOWS_VERSION) {
+            QSKIP("ConPTY requires Windows 10 build 18309 or newer");
         }
 
-        qsrand(QDateTime::currentMSecsSinceEpoch());
+        const QStringList shells = getShells();
+        if (shells.isEmpty()) {
+            QSKIP("No supported Windows command interpreter was found");
+        }
 
-        QStringList shells = getShells();
+        for (const QString &shellPath : shells) {
+            QScopedPointer<IPtyProcess> process(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+            QVERIFY(process);
+            QCOMPARE(process->type(), IPtyProcess::ConPty);
+            QVERIFY(process->isAvailable());
 
-        foreach (QString shellPath, shells)
-        {
-            qDebug() << "Test" << shellPath;
-            IPtyProcess::PtyType ptyType = IPtyProcess::ConPty;
-            QScopedPointer<IPtyProcess> conPty(PtyQt::createPtyProcess(ptyType));
-            QCOMPARE(conPty->type(), ptyType);
-            QVERIFY(conPty->isAvailable());
+            QEventLoop readyLoop;
+            QTimer timeout;
+            timeout.setSingleShot(true);
+            connect(&timeout, &QTimer::timeout, &readyLoop, &QEventLoop::quit);
+            connect(process->notifier(), &QIODevice::readyRead, &readyLoop, &QEventLoop::quit);
 
-            //check shell welcome
-            QEventLoop el;
-            auto connection = QObject::connect(conPty->notifier(), &QIODevice::readyRead, [&conPty, &el]() {
-                sleepByEventLoop(1);
-                //qDebug() << "conPty.read" << conPty->readAll();
-                conPty->readAll();
-                el.quit();
-            });
+            QVERIFY2(process->startProcess(shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
+                     qPrintable(process->lastError()));
+            QVERIFY(process->pid() != 0);
 
-            //start ConPty agent and cmd.exe
-            bool startResult = conPty->startProcess(shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 200, 80);
-#ifdef PTYQT_DEBUG
-            if (!startResult)
-                qDebug() << conPty->lastError() << conPty->dumpDebugInfo();
-#endif
-            QVERIFY(startResult);
+            timeout.start(5000);
+            if (timeout.isActive()) {
+                readyLoop.exec();
+            }
+            timeout.stop();
 
-            //check pid
-            QVERIFY(conPty->pid() != 0);
+            // The read side is a real QIODevice: consuming bytes drains its buffer.
+            const QByteArray startupOutput = process->readAll();
+            QVERIFY(!startupOutput.isNull());
+            QCOMPARE(process->notifier()->bytesAvailable(), qint64(0));
 
-            //check shell welcome
-            el.exec();
-            conPty->notifier()->disconnect(connection);
+            QVERIFY(process->resize(120, 40));
+            QCOMPARE(process->size().first, qint16(120));
+            QCOMPARE(process->size().second, qint16(40));
 
-            //check shell read after write
-            bool testRes = false;
-            connection = QObject::connect(conPty->notifier(), &QIODevice::readyRead, [&conPty, &el, &testRes]() {
-                sleepByEventLoop(1);
-                QString res = QString::fromUtf8(conPty->readAll());
-                //qDebug() << res;
+            // Run a command whose argument contains whitespace and a quote.
+            const QString marker = QStringLiteral("ptyqt argument roundtrip");
+            const QString script = QStringLiteral("Write-Output '%1'; exit 7").arg(marker);
+            const QString powershell = QStandardPaths::findExecutable(QStringLiteral("powershell"));
+            const QString pwsh = QStandardPaths::findExecutable(QStringLiteral("pwsh"));
+            QString executable = !pwsh.isEmpty() ? pwsh : powershell;
 
-                //for e.g. bash return empty strings after needed data
-                if (res.isEmpty() && testRes)
-                    return;
+            if (!executable.isEmpty()) {
+                QVERIFY(process->kill());
+                QScopedPointer<IPtyProcess> commandProcess(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+                QVERIFY(commandProcess->startProcess(
+                    executable,
+                    {QStringLiteral("-NoProfile"), QStringLiteral("-NonInteractive"),
+                     QStringLiteral("-Command"), script},
+                    QCoreApplication::applicationDirPath(),
+                    QProcessEnvironment::systemEnvironment().toStringList(),
+                    100, 30));
 
-                testRes = res.contains("winpty-agent.exe");
-                testRes = testRes && res.contains("winpty.dll");
-                testRes = testRes && res.contains("ptyqt_tests.exe");
-                el.quit();
-            });
-            qDebug() << conPty->write("dir\r\n\r\n");
-            //sleepByEventLoop(1);
-            //qDebug() << conPty->readAll();
-            el.exec();
-            QVERIFY(testRes);
-            conPty->notifier()->disconnect(connection);
+                QEventLoop commandLoop;
+                QTimer commandTimeout;
+                commandTimeout.setSingleShot(true);
+                connect(commandProcess->notifier(), &QIODevice::readyRead, &commandLoop, &QEventLoop::quit);
+                connect(&commandTimeout, &QTimer::timeout, &commandLoop, &QEventLoop::quit);
 
-            //resize window
-            sleepByEventLoop(1);
-            QVERIFY(conPty->resize(240, 90));
+                QByteArray output;
+                commandTimeout.start(10000);
+                while (commandTimeout.isActive() && !output.contains(marker.toUtf8())) {
+                    commandLoop.exec();
+                    output += commandProcess->readAll();
+                }
+                commandTimeout.stop();
 
-            //kill shell process
-#ifdef PTYQT_DEBUG
-            qDebug() << conPty->dumpDebugInfo();
-            sleepByEventLoop(DEBUG_SLEEP_SEC);
-#endif
-            QVERIFY(conPty->kill());
-            sleepByEventLoop(1);
+                QVERIFY2(output.contains(marker.toUtf8()), output.constData());
+                QTRY_VERIFY_WITH_TIMEOUT(!static_cast<ConPtyProcess *>(commandProcess.data())->isRunning(), 10000);
+                QCOMPARE(static_cast<ConPtyProcess *>(commandProcess.data())->exitCode(), 7);
+            } else {
+                // Keep basic ConPTY coverage on minimal Windows images.
+                QVERIFY(process->kill());
+            }
         }
     }
 
