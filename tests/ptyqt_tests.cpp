@@ -13,8 +13,9 @@
 #endif
 #include <string>
 #include <QTimer>
-#include <QStandardPaths>
+#include <QElapsedTimer>
 #include <QDateTime>
+#include <cstdio>
 
 #ifdef Q_OS_WIN
 #ifndef _WINDEF_
@@ -243,11 +244,14 @@ private slots:
             QCOMPARE(process->size().second, qint16(40));
             qInfo() << "[ConPTY] Resize verified";
 
-            const QString pwsh = QStandardPaths::findExecutable(QStringLiteral("pwsh"));
-            const QString powershell = QStandardPaths::findExecutable(QStringLiteral("powershell"));
-            const QString executable = !pwsh.isEmpty() ? pwsh : powershell;
-            QVERIFY2(!executable.isEmpty(), "Neither pwsh.exe nor powershell.exe is available on PATH");
+            // Use the same cmd.exe found for the interactive-shell test. This
+            // keeps the process-exit probe independent of PowerShell startup and
+            // host-specific command semantics.
+            const QString executable = shellPath;
             qInfo().noquote() << "[ConPTY] Using command interpreter:" << executable;
+            std::fprintf(stderr, "[ConPTY test] Using CMD interpreter: %s\\n",
+                         executable.toLocal8Bit().constData());
+            std::fflush(stderr);
 
             qInfo() << "[ConPTY] Closing interactive shell";
             QVERIFY2(process->kill(), "Could not close the interactive ConPTY shell");
@@ -255,10 +259,9 @@ private slots:
             // Exercise the ConPTY-specific overload that accepts arguments and a working directory.
             QScopedPointer<ConPtyProcess> commandProcess(new ConPtyProcess);
             const QStringList arguments{
-                QStringLiteral("-NoProfile"),
-                QStringLiteral("-NonInteractive"),
-                QStringLiteral("-Command"),
-                QStringLiteral("Write-Output 'ptyqt-argument-check'; exit 7")
+                QStringLiteral("/D"),
+                QStringLiteral("/C"),
+                QStringLiteral("echo ptyqt-argument-check & exit /b 7")
             };
             qInfo() << "[ConPTY] Launching argument/working-directory test process";
             QVERIFY2(commandProcess->startProcess(
@@ -268,6 +271,9 @@ private slots:
                 QProcessEnvironment::systemEnvironment().toStringList(),
                 100, 30), qPrintable(commandProcess->lastError()));
             qInfo() << "[ConPTY] Test process started with PID" << commandProcess->pid();
+            std::fprintf(stderr, "[ConPTY test] CMD probe started: PID %lu\\n",
+                         static_cast<unsigned long>(commandProcess->pid()));
+            std::fflush(stderr);
 
             QEventLoop commandLoop;
             QTimer commandTimeout;
@@ -286,13 +292,33 @@ private slots:
 
             qInfo().noquote() << "[ConPTY] Captured command output:"
                               << QString::fromLocal8Bit(output).trimmed();
+            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes: %s\\n",
+                         static_cast<unsigned long long>(output.size()),
+                         output.constData());
+            std::fflush(stderr);
             QVERIFY2(output.contains(expectedOutput),
                      qPrintable(QStringLiteral("Expected marker was not received; captured output: %1")
                                     .arg(QString::fromLocal8Bit(output))));
 
-            qInfo() << "[ConPTY] Waiting for process exit";
-            QTRY_VERIFY_WITH_TIMEOUT(!commandProcess->isRunning(), 10000);
+            qInfo() << "[ConPTY] Waiting for CMD process exit";
+            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\\n",
+                         static_cast<unsigned long>(commandProcess->pid()));
+            std::fflush(stderr);
+            QElapsedTimer exitTimer;
+            exitTimer.start();
+            while (commandProcess->isRunning() && exitTimer.elapsed() < 10000) {
+                QTest::qWait(50);
+            }
+            const bool processStopped = !commandProcess->isRunning();
             const int exitCode = commandProcess->exitCode();
+            std::fprintf(stderr,
+                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d\\n",
+                         processStopped ? 1 : 0,
+                         static_cast<long long>(exitTimer.elapsed()),
+                         exitCode);
+            std::fflush(stderr);
+            QVERIFY2(processStopped,
+                     "CMD process did not signal process-handle completion within 10 seconds");
             qInfo() << "[ConPTY] Process exited with code" << exitCode;
             QCOMPARE(exitCode, 7);
 

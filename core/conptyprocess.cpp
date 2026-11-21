@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -325,16 +326,44 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     // while the ConPTY output pipe remains open until ClosePseudoConsole().
     // Monitor the process handle separately so isRunning() reflects the child.
     const HANDLE processHandle = m_processInfo.hProcess;
-    m_processThread = QThread::create([this, processHandle]() {
+    const DWORD processId = m_processInfo.dwProcessId;
+    m_processThread = QThread::create([this, processHandle, processId]() {
+        std::fprintf(stderr, "[ConPTY monitor] PID %lu: waiting for process handle\\n",
+                     static_cast<unsigned long>(processId));
+        std::fflush(stderr);
+
         const DWORD waitResult = WaitForSingleObject(processHandle, INFINITE);
+        const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+        std::fprintf(stderr,
+                     "[ConPTY monitor] PID %lu: WaitForSingleObject returned 0x%08lx (error %lu)\\n",
+                     static_cast<unsigned long>(processId),
+                     static_cast<unsigned long>(waitResult),
+                     static_cast<unsigned long>(waitError));
+        std::fflush(stderr);
+
         if (waitResult == WAIT_OBJECT_0) {
             DWORD code = static_cast<DWORD>(-1);
             if (GetExitCodeProcess(processHandle, &code)) {
                 m_exitCode.store(static_cast<int>(code));
+                std::fprintf(stderr, "[ConPTY monitor] PID %lu: captured exit code %lu\\n",
+                             static_cast<unsigned long>(processId),
+                             static_cast<unsigned long>(code));
+            } else {
+                const DWORD error = GetLastError();
+                std::fprintf(stderr, "[ConPTY monitor] PID %lu: GetExitCodeProcess failed (error %lu)\\n",
+                             static_cast<unsigned long>(processId),
+                             static_cast<unsigned long>(error));
             }
         }
+
         m_running.store(false);
+        std::fprintf(stderr, "[ConPTY monitor] PID %lu: isRunning=false, exitCode=%d\\n",
+                     static_cast<unsigned long>(processId), m_exitCode.load());
+        std::fflush(stderr);
     });
+    std::fprintf(stderr, "[ConPTY monitor] PID %lu: starting monitor thread\\n",
+                 static_cast<unsigned long>(processId));
+    std::fflush(stderr);
     m_processThread->start();
 
     m_readThread = QThread::create([this]() {
@@ -381,8 +410,15 @@ bool ConPtyProcess::kill()
         return false;
     }
 
+    std::fprintf(stderr, "[ConPTY cleanup] PID %lu: beginning cleanup (running=%d)\\n",
+                 static_cast<unsigned long>(m_pid), isRunning() ? 1 : 0);
+    std::fflush(stderr);
+
 #ifdef KPTY_HAVE_CONPTY_SDK
     if (m_ptyHandler && m_winContext.closePseudoConsole) {
+        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: closing pseudo-console\\n",
+                     static_cast<unsigned long>(m_pid));
+        std::fflush(stderr);
         m_winContext.closePseudoConsole(m_ptyHandler);
         m_ptyHandler = nullptr;
     }
@@ -391,15 +427,30 @@ bool ConPtyProcess::kill()
     // Closing the pseudo-console releases the output pipe. The process itself
     // is monitored independently, so wait for it here and only terminate it
     // when graceful shutdown does not complete within the grace period.
-    if (m_processInfo.hProcess
-        && WaitForSingleObject(m_processInfo.hProcess, 1500) == WAIT_TIMEOUT) {
-        TerminateProcess(m_processInfo.hProcess, 1);
-        WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+    if (m_processInfo.hProcess) {
+        const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
+        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: process wait returned 0x%08lx\\n",
+                     static_cast<unsigned long>(m_pid),
+                     static_cast<unsigned long>(waitResult));
+        std::fflush(stderr);
+        if (waitResult == WAIT_TIMEOUT) {
+            const BOOL terminated = TerminateProcess(m_processInfo.hProcess, 1);
+            const DWORD terminateError = terminated ? ERROR_SUCCESS : GetLastError();
+            std::fprintf(stderr, "[ConPTY cleanup] PID %lu: TerminateProcess=%d (error %lu)\\n",
+                         static_cast<unsigned long>(m_pid),
+                         terminated ? 1 : 0,
+                         static_cast<unsigned long>(terminateError));
+            std::fflush(stderr);
+            WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+        }
     }
 
     // The process monitor must finish before its process handle is closed.
     if (m_processThread) {
         m_processThread->wait();
+        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: process monitor joined\\n",
+                     static_cast<unsigned long>(m_pid));
+        std::fflush(stderr);
         delete m_processThread;
         m_processThread = nullptr;
     }
