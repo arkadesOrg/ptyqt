@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Windows dependencies
         shell: pwsh
-        run: '& C:\vcpkg\vcpkg.exe install winpty:x64-windows bzip2:x64-windows zlib:x64-windows'
+        run: '& C:\vcpkg\vcpkg.exe install winpty:x64-windows bzip2:x64-windows zlib:x64-windows pcre2:x64-windows double-conversion:x64-windows'
 
       - name: Configure
         shell: pwsh
