@@ -91,6 +91,7 @@ private:
     static QString resolveExecutable(const QString &program);
 
     WindowsContext m_winContext;
+    PtyBuffer m_buffer;
     HPCON m_ptyHandler = nullptr;
     HANDLE m_hPipeIn = INVALID_HANDLE_VALUE;
     HANDLE m_hPipeOut = INVALID_HANDLE_VALUE;
