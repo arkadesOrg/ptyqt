@@ -1,5 +1,7 @@
 #include "conptyprocess.h"
 
+#ifdef Q_OS_WIN
+
 #include <QFileInfo>
 #include <QDir>
 #include <QProcessEnvironment>
@@ -365,11 +367,18 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                            << ": waiting for process handle";
 
         const DWORD waitResult = WaitForSingleObject(processHandle, INFINITE);
-        const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
-        qDebug().nospace() << "[ConPTY monitor] PID " << processId
-                           << ": WaitForSingleObject returned "
-                           << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'))
-                           << " (error " << waitError << ")";
+        if (waitResult == WAIT_OBJECT_0) {
+            qDebug().nospace() << "[ConPTY monitor] PID " << processId
+                               << ": process handle signaled";
+        } else if (waitResult == WAIT_FAILED) {
+            const DWORD waitError = GetLastError();
+            qWarning().nospace() << "[ConPTY monitor] PID " << processId
+                                 << ": waiting for process failed (Win32 error " << waitError << ")";
+        } else {
+            qWarning().nospace() << "[ConPTY monitor] PID " << processId
+                                 << ": unexpected process wait result "
+                                 << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
+        }
 
         if (waitResult == WAIT_OBJECT_0) {
             DWORD code = static_cast<DWORD>(-1);
@@ -464,9 +473,20 @@ bool ConPtyProcess::kill()
     // when graceful shutdown does not complete within the grace period.
     if (m_processInfo.hProcess) {
         const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
-        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
-                           << ": process wait returned "
-                           << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
+        if (waitResult == WAIT_OBJECT_0) {
+            qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
+                               << ": process exited during graceful shutdown";
+        } else if (waitResult == WAIT_TIMEOUT) {
+            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
+                                 << ": process did not exit within 1500 ms; terminating";
+        } else if (waitResult == WAIT_FAILED) {
+            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
+                                 << ": process wait failed (Win32 error " << GetLastError() << ")";
+        } else {
+            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
+                                 << ": unexpected process wait result "
+                                 << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
+        }
         if (waitResult == WAIT_TIMEOUT) {
             const BOOL terminated = TerminateProcess(m_processInfo.hProcess, 1);
             const DWORD terminateError = terminated ? ERROR_SUCCESS : GetLastError();
@@ -597,3 +617,4 @@ void ConPtyProcess::moveToThread(QThread *targetThread)
 {
     Q_UNUSED(targetThread)
 }
+#endif // Q_OS_WIN
