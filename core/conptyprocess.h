@@ -3,6 +3,8 @@
 
 #include "iptyprocess.h"
 
+#ifdef Q_OS_WIN
+
 #include <windows.h>
 #include <process.h>
 
@@ -102,5 +104,7 @@ private:
     std::atomic_bool m_running{false};
     std::atomic_int m_exitCode{-1};
 };
+
+#endif // Q_OS_WIN
 
 #endif // CONPTYPROCESS_H
