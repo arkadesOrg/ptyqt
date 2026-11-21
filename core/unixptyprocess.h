@@ -23,6 +23,7 @@ public:
         , m_handleSlave(-1)
     {
         setProcessChannelMode(QProcess::SeparateChannels);
+        setChildProcessModifier([this]() { setupPtyChildProcess(); });
     }
 
     void emitReadyRead()
@@ -31,7 +32,7 @@ public:
     }
 
 protected:
-    virtual void setupChildProcess();
+    void setupPtyChildProcess();
 
 private:
     int m_handleMaster, m_handleSlave;
