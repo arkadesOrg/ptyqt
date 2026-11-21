@@ -383,6 +383,9 @@ bool ConPtyProcess::kill()
 
     // ConPTY close is asynchronous; wait for the pipe reader to drain remaining
     // output before closing the read handle. Escalate only if the child stays alive.
+    // The reader thread also waits for the process handle after pipe EOF.
+    // Closing ConPTY releases the pipe, allowing both output draining and
+    // process-status collection to complete without terminating a normal exit.
     if (m_readThread && !m_readThread->wait(1500)) {
         if (m_processInfo.hProcess && WaitForSingleObject(m_processInfo.hProcess, 0) == WAIT_TIMEOUT) {
             TerminateProcess(m_processInfo.hProcess, 1);
@@ -391,13 +394,6 @@ bool ConPtyProcess::kill()
             CancelIoEx(m_hPipeIn, nullptr);
         }
         m_readThread->wait();
-    }
-
-    if (m_processInfo.hProcess) {
-        DWORD code = static_cast<DWORD>(-1);
-        if (GetExitCodeProcess(m_processInfo.hProcess, &code)) {
-            m_exitCode.store(static_cast<int>(code));
-        }
     }
 
     if (m_readThread) {
