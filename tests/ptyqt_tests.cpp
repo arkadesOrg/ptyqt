@@ -5,6 +5,7 @@
 #endif
 #include <QProcessEnvironment>
 #include <QFile>
+#include <QTemporaryDir>
 #include <QSysInfo>
 #include <QThread>
 #ifdef Q_OS_WIN
@@ -258,17 +259,33 @@ private slots:
 
             // Exercise the ConPTY-specific overload that accepts arguments and a working directory.
             QScopedPointer<ConPtyProcess> commandProcess(new ConPtyProcess);
+            // Keep the CMD command language out of the CreateProcess argument
+            // quoting test. A temporary batch file lets CMD interpret multiple
+            // statements without embedding shell metacharacters in /C's command.
+            QTemporaryDir probeDirectory;
+            QVERIFY2(probeDirectory.isValid(), "Could not create a temporary CMD probe directory");
+
+            QFile probeScript(probeDirectory.filePath(QStringLiteral("ptyqt-conpty-probe.cmd")));
+            QVERIFY2(probeScript.open(QIODevice::WriteOnly | QIODevice::Text),
+                     qPrintable(probeScript.errorString()));
+            const QByteArray probeContents(
+                "@echo off\\r\\n"
+                "echo ptyqt-argument-check\\r\\n"
+                "exit /b 7\\r\\n");
+            QCOMPARE(probeScript.write(probeContents), static_cast<qint64>(probeContents.size()));
+            QVERIFY(probeScript.flush());
+            probeScript.close();
+
             const QStringList arguments{
                 QStringLiteral("/D"),
-                QStringLiteral("/S"),
                 QStringLiteral("/C"),
-                QStringLiteral("echo ptyqt-argument-check & exit 7")
+                QStringLiteral("ptyqt-conpty-probe.cmd")
             };
             qInfo() << "[ConPTY] Launching argument/working-directory test process";
             QVERIFY2(commandProcess->startProcess(
                 executable,
                 arguments,
-                QCoreApplication::applicationDirPath(),
+                probeDirectory.path(),
                 QProcessEnvironment::systemEnvironment().toStringList(),
                 100, 30), qPrintable(commandProcess->lastError()));
             qInfo() << "[ConPTY] Test process started with PID" << commandProcess->pid();
