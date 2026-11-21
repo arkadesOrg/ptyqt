@@ -10,35 +10,38 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          submodules: recursive
 
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.7.3'
           arch: 'win64_msvc2019_64'
           cache: true
+          modules: 'qtwebsockets'
 
       - uses: ilammy/msvc-dev-cmd@v1
-      
+
       - name: Bootstrap vcpkg
+        shell: cmd
         run: |
-          C:\vcpkg\bootstrap-vcpkg.bat
+          if not exist C:\vcpkg\vcpkg.exe C:\vcpkg\bootstrap-vcpkg.bat
 
       - name: Install winpty
-        run: |
-          C:\vcpkg\vcpkg.exe install winpty:x64-windows
-          
-      - name: Install dependencies
-        run: vcpkg install winpty:x64-windows
-      
-      - name: Build dependencies
-        run: |
-          cmake -B build -G Ninja
-            -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
-      - name: Configure PtyQt
-        run: cmake -B build -G Ninja
+        shell: cmd
+        run: C:\vcpkg\vcpkg.exe install winpty:x64-windows
 
-      - name: Build PtyQt
-        run: cmake --build build
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DCMAKE_BUILD_TYPE=Release
+          -DNO_BUILD_EXAMPLES=1
+          -DNO_BUILD_TESTS=0
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
