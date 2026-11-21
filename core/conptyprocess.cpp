@@ -240,11 +240,11 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     m_lastError = QStringLiteral("ConPTY requires Windows SDK 10.0.18346 or newer");
     return false;
 #else
-    QMutexLocker lifecycleLock(&m_lifecycleMutex);
     if (!isAvailable()) {
         m_lastError = m_winContext.lastError();
         return false;
     }
+    QMutexLocker lifecycleLock(&m_lifecycleMutex);
     if (isRunning() || m_ptyHandler || m_readThread) {
         m_lastError = QStringLiteral("A ConPTY process is already running");
         return false;
