@@ -17,8 +17,14 @@ else()
     set(PTYQT_DEBUG FALSE)
 endif()
 
-if("${BUILD_TYPE}" STREQUAL "SHARED")
+# The core target is shared unless BUILD_TYPE explicitly requests STATIC.
+# Enable automatic symbol exports for the Windows DLL so CMake also generates
+# the import library consumed by downstream targets such as ptyqt_tests.
+if (MSVC AND NOT "${BUILD_TYPE}" STREQUAL "STATIC")
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+endif()
+
+if("${BUILD_TYPE}" STREQUAL "SHARED")
     message("Build type: ${BUILD_TYPE}")
 endif()
 
