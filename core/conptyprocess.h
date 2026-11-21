@@ -100,6 +100,7 @@ private:
     PROCESS_INFORMATION m_processInfo{};
     STARTUPINFOEX m_startupInfo{};
     QThread *m_readThread = nullptr;
+    QThread *m_processThread = nullptr;
     mutable QMutex m_lifecycleMutex;
     std::atomic_bool m_running{false};
     std::atomic_int m_exitCode{-1};
