@@ -102,8 +102,8 @@ set(PTYQTLIB_HEADERS_DIR ${PROJECT_SOURCE_DIR}/core)
 
 include_directories(${PTYQT_INSTALL_INCLUDE_DIR})
 include_directories(${PTYQTLIB_HEADERS_DIR})
-if (MSVC)
-    include_directories(${WINPTY_ROOT_DIR}/include)
+if (MSVC AND WINPTY_INCLUDE_DIR)
+    include_directories("${WINPTY_INCLUDE_DIR}")
 endif()
 
 #sub projects
