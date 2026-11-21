@@ -321,6 +321,22 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     m_pid = m_processInfo.dwProcessId;
     m_running.store(true);
 
+    // Process lifetime and pipe lifetime are independent. A child can exit
+    // while the ConPTY output pipe remains open until ClosePseudoConsole().
+    // Monitor the process handle separately so isRunning() reflects the child.
+    const HANDLE processHandle = m_processInfo.hProcess;
+    m_processThread = QThread::create([this, processHandle]() {
+        const DWORD waitResult = WaitForSingleObject(processHandle, INFINITE);
+        if (waitResult == WAIT_OBJECT_0) {
+            DWORD code = static_cast<DWORD>(-1);
+            if (GetExitCodeProcess(processHandle, &code)) {
+                m_exitCode.store(static_cast<int>(code));
+            }
+        }
+        m_running.store(false);
+    });
+    m_processThread->start();
+
     m_readThread = QThread::create([this]() {
         std::array<char, 4096> buffer{};
         for (;;) {
@@ -334,15 +350,6 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                 break;
             }
         }
-
-        if (m_processInfo.hProcess) {
-            WaitForSingleObject(m_processInfo.hProcess, INFINITE);
-            DWORD code = static_cast<DWORD>(-1);
-            if (GetExitCodeProcess(m_processInfo.hProcess, &code)) {
-                m_exitCode.store(static_cast<int>(code));
-            }
-        }
-        m_running.store(false);
     });
     m_readThread->start();
     return true;
@@ -369,7 +376,7 @@ bool ConPtyProcess::resize(qint16 cols, qint16 rows)
 bool ConPtyProcess::kill()
 {
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
-    const bool hadProcess = m_ptyHandler || m_processInfo.hProcess || m_readThread;
+    const bool hadProcess = m_ptyHandler || m_processInfo.hProcess || m_readThread || m_processThread;
     if (!hadProcess) {
         return false;
     }
@@ -381,15 +388,25 @@ bool ConPtyProcess::kill()
     }
 #endif
 
-    // ConPTY close is asynchronous; wait for the pipe reader to drain remaining
-    // output before closing the read handle. Escalate only if the child stays alive.
-    // The reader thread also waits for the process handle after pipe EOF.
-    // Closing ConPTY releases the pipe, allowing both output draining and
-    // process-status collection to complete without terminating a normal exit.
+    // Closing the pseudo-console releases the output pipe. The process itself
+    // is monitored independently, so wait for it here and only terminate it
+    // when graceful shutdown does not complete within the grace period.
+    if (m_processInfo.hProcess
+        && WaitForSingleObject(m_processInfo.hProcess, 1500) == WAIT_TIMEOUT) {
+        TerminateProcess(m_processInfo.hProcess, 1);
+        WaitForSingleObject(m_processInfo.hProcess, INFINITE);
+    }
+
+    // The process monitor must finish before its process handle is closed.
+    if (m_processThread) {
+        m_processThread->wait();
+        delete m_processThread;
+        m_processThread = nullptr;
+    }
+
+    // Drain output until the pseudo-console closes its pipe. If it remains
+    // blocked, cancel the outstanding read before releasing the pipe handle.
     if (m_readThread && !m_readThread->wait(1500)) {
-        if (m_processInfo.hProcess && WaitForSingleObject(m_processInfo.hProcess, 0) == WAIT_TIMEOUT) {
-            TerminateProcess(m_processInfo.hProcess, 1);
-        }
         if (m_hPipeIn != INVALID_HANDLE_VALUE) {
             CancelIoEx(m_hPipeIn, nullptr);
         }
