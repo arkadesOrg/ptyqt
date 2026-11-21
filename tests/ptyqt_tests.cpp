@@ -249,7 +249,7 @@ private slots:
             // host-specific command semantics.
             const QString executable = shellPath;
             qInfo().noquote() << "[ConPTY] Using command interpreter:" << executable;
-            std::fprintf(stderr, "[ConPTY test] Using CMD interpreter: %s\\n",
+            std::fprintf(stderr, "[ConPTY test] Using CMD interpreter: %s\n",
                          executable.toLocal8Bit().constData());
             std::fflush(stderr);
 
@@ -271,28 +271,39 @@ private slots:
                 QProcessEnvironment::systemEnvironment().toStringList(),
                 100, 30), qPrintable(commandProcess->lastError()));
             qInfo() << "[ConPTY] Test process started with PID" << commandProcess->pid();
-            std::fprintf(stderr, "[ConPTY test] CMD probe started: PID %lu\\n",
+            std::fprintf(stderr, "[ConPTY test] CMD probe started: PID %lu\n",
                          static_cast<unsigned long>(commandProcess->pid()));
             std::fflush(stderr);
 
-            QEventLoop commandLoop;
-            QTimer commandTimeout;
-            commandTimeout.setSingleShot(true);
-            connect(commandProcess->notifier(), &QIODevice::readyRead, &commandLoop, &QEventLoop::quit);
-            connect(&commandTimeout, &QTimer::timeout, &commandLoop, &QEventLoop::quit);
-
             const QByteArray expectedOutput("ptyqt-argument-check");
             QByteArray output;
-            commandTimeout.start(10000);
-            while (commandTimeout.isActive() && !output.contains(expectedOutput)) {
-                commandLoop.exec();
+            QElapsedTimer outputTimer;
+            outputTimer.start();
+
+            // Poll both the output buffer and process state. A short wait also
+            // services Qt events without waiting for pipe EOF when the child
+            // exits before producing the expected marker.
+            while (!output.contains(expectedOutput) && outputTimer.elapsed() < 10000) {
                 output += commandProcess->readAll();
+                if (!commandProcess->isRunning()) {
+                    // The process monitor and pipe reader are independent.
+                    // Allow the reader a brief window to drain bytes already
+                    // written before the process handle became signalled.
+                    QElapsedTimer drainTimer;
+                    drainTimer.start();
+                    while (!output.contains(expectedOutput) && drainTimer.elapsed() < 1000) {
+                        output += commandProcess->readAll();
+                        QTest::qWait(25);
+                    }
+                    break;
+                }
+                QTest::qWait(25);
             }
             output += commandProcess->readAll();
 
             qInfo().noquote() << "[ConPTY] Captured command output:"
                               << QString::fromLocal8Bit(output).trimmed();
-            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes: %s\\n",
+            std::fprintf(stderr, "[ConPTY test] Captured %llu bytes: %s\n",
                          static_cast<unsigned long long>(output.size()),
                          output.constData());
             std::fflush(stderr);
@@ -301,7 +312,7 @@ private slots:
                                     .arg(QString::fromLocal8Bit(output))));
 
             qInfo() << "[ConPTY] Waiting for CMD process exit";
-            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\\n",
+            std::fprintf(stderr, "[ConPTY test] Waiting up to 10 seconds for PID %lu to exit\n",
                          static_cast<unsigned long>(commandProcess->pid()));
             std::fflush(stderr);
             QElapsedTimer exitTimer;
@@ -312,7 +323,7 @@ private slots:
             const bool processStopped = !commandProcess->isRunning();
             const int exitCode = commandProcess->exitCode();
             std::fprintf(stderr,
-                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d\\n",
+                         "[ConPTY test] Exit wait finished: stopped=%d, elapsed=%lld ms, exitCode=%d\n",
                          processStopped ? 1 : 0,
                          static_cast<long long>(exitTimer.elapsed()),
                          exitCode);
