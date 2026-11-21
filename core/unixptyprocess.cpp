@@ -323,7 +323,7 @@ void UnixPtyProcess::moveToThread(QThread *targetThread)
     m_shellProcess.moveToThread(targetThread);
 }
 
-void ShellProcess::setupChildProcess()
+void ShellProcess::setupPtyChildProcess()
 {
     dup2(m_handleSlave, STDIN_FILENO);
     dup2(m_handleSlave, STDOUT_FILENO);
