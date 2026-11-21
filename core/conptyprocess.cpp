@@ -132,7 +132,7 @@ qint64 PtyBuffer::readData(char *data, qint64 maxlen)
     std::memcpy(data, m_readBuffer.constData(), static_cast<size_t>(count));
     m_readBuffer.remove(0, static_cast<qsizetype>(count));
 #ifdef PTYQT_DEBUG
-    std::fprintf(stderr, "[ConPTY buffer] readData returned %lld bytes; %lld remain\\n",
+    std::fprintf(stderr, "[ConPTY buffer] readData returned %lld bytes; %lld remain\n",
                  static_cast<long long>(count),
                  static_cast<long long>(m_readBuffer.size()));
     std::fflush(stderr);
@@ -168,7 +168,7 @@ void PtyBuffer::append(const QByteArray &data)
         bufferedBytes = static_cast<qint64>(m_readBuffer.size());
     }
 #ifdef PTYQT_DEBUG
-    std::fprintf(stderr, "[ConPTY buffer] appended %lld bytes; %lld buffered\\n",
+    std::fprintf(stderr, "[ConPTY buffer] appended %lld bytes; %lld buffered\n",
                  static_cast<long long>(data.size()),
                  static_cast<long long>(bufferedBytes));
     std::fflush(stderr);
@@ -408,7 +408,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     m_readThread = QThread::create([this, processId]() {
         std::array<char, 4096> buffer{};
 #ifdef PTYQT_DEBUG
-        std::fprintf(stderr, "[ConPTY reader] PID %lu: started (pipe=%p)\\n",
+        std::fprintf(stderr, "[ConPTY reader] PID %lu: started (pipe=%p)\n",
                      static_cast<unsigned long>(processId), m_hPipeIn);
         std::fflush(stderr);
 #endif
@@ -419,7 +419,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
             const DWORD readError = success ? ERROR_SUCCESS : GetLastError();
 #ifdef PTYQT_DEBUG
             std::fprintf(stderr,
-                         "[ConPTY reader] PID %lu: ReadFile success=%d bytes=%lu error=%lu\\n",
+                         "[ConPTY reader] PID %lu: ReadFile success=%d bytes=%lu error=%lu\n",
                          static_cast<unsigned long>(processId),
                          success ? 1 : 0,
                          static_cast<unsigned long>(bytesRead),
@@ -431,7 +431,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
             }
             if (!success || bytesRead == 0) {
 #ifdef PTYQT_DEBUG
-                std::fprintf(stderr, "[ConPTY reader] PID %lu: stopping\\n",
+                std::fprintf(stderr, "[ConPTY reader] PID %lu: stopping\n",
                              static_cast<unsigned long>(processId));
                 std::fflush(stderr);
 #endif
