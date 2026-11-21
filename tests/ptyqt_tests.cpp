@@ -276,6 +276,18 @@ private slots:
             QVERIFY(probeScript.flush());
             probeScript.close();
 
+            const QString probeWorkingDirectory = probeDirectory.path();
+            const QString probeScriptPath = probeScript.fileName();
+            qInfo().noquote() << "[ConPTY] CMD probe script:" << probeScriptPath;
+            qInfo().noquote() << "[ConPTY] CMD working directory:" << probeWorkingDirectory;
+            qInfo() << "[ConPTY] CMD script exists:" << QFileInfo::exists(probeScriptPath)
+                    << "size:" << QFileInfo(probeScriptPath).size();
+            std::fprintf(stderr, "[ConPTY test] Script path: %s\n",
+                         probeScriptPath.toLocal8Bit().constData());
+            std::fprintf(stderr, "[ConPTY test] Working directory: %s\n",
+                         probeWorkingDirectory.toLocal8Bit().constData());
+            std::fflush(stderr);
+
             const QStringList arguments{
                 QStringLiteral("/D"),
                 QStringLiteral("/C"),
@@ -285,7 +297,7 @@ private slots:
             QVERIFY2(commandProcess->startProcess(
                 executable,
                 arguments,
-                probeDirectory.path(),
+                probeWorkingDirectory,
                 QProcessEnvironment::systemEnvironment().toStringList(),
                 100, 30), qPrintable(commandProcess->lastError()));
             qInfo() << "[ConPTY] Test process started with PID" << commandProcess->pid();

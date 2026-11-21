@@ -1,6 +1,7 @@
 #include "conptyprocess.h"
 
 #include <QFileInfo>
+#include <QDir>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -302,7 +303,15 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     }
     const std::vector<wchar_t> environmentBlock = makeEnvironmentBlock(processEnvironment);
 
-    std::wstring commandLine = quoteWindowsArgument(executablePath);
+    // Always quote argv[0], even when the executable path has no spaces.
+    // cmd.exe has its own command-line parser and must see an unambiguous
+    // executable token before its /D and /C switches.
+    const std::wstring nativeExecutable =
+        QDir::toNativeSeparators(executablePath).toStdWString();
+    std::wstring commandLine(1, L'"');
+    commandLine += nativeExecutable;
+    commandLine.push_back(L'"');
+
     for (const QString &argument : arguments) {
         commandLine.push_back(L' ');
         commandLine += quoteWindowsArgument(argument);
@@ -315,8 +324,8 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                  printableCommandLine.constData());
     std::fflush(stderr);
 
-    const std::wstring nativeExecutable = executablePath.toStdWString();
-    const std::wstring nativeDirectory = currentDirectory.toStdWString();
+    const std::wstring nativeDirectory =
+        QDir::toNativeSeparators(currentDirectory).toStdWString();
     const BOOL created = CreateProcessW(
         nativeExecutable.c_str(),
         mutableCommandLine.data(),
