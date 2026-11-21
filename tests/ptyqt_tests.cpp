@@ -5,6 +5,7 @@
 #endif
 #include <QProcessEnvironment>
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QSysInfo>
 #include <QThread>
