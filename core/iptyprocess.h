@@ -37,9 +37,9 @@ public:
     virtual qint64 write(const QByteArray &byteArray) = 0;
     virtual bool isAvailable() = 0;
     virtual void moveToThread(QThread *targetThread) = 0;
-    qint64 pid() { return m_pid; }
-    QPair<qint16, qint16> size() { return m_size; }
-    const QString lastError() { return m_lastError; }
+    qint64 pid() const { return m_pid; }
+    QPair<qint16, qint16> size() const { return m_size; }
+    QString lastError() const { return m_lastError; }
     bool toggleTrace() { m_trace = !m_trace; return m_trace; }
 
 protected:
