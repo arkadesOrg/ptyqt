@@ -351,7 +351,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
 
 bool ConPtyProcess::resize(qint16 cols, qint16 rows)
 {
-#ifndef TOO_OLD_WINSDK
+#ifdef KPTY_HAVE_CONPTY_SDK
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
     if (!m_ptyHandler || !m_winContext.resizePseudoConsole) {
         return false;
@@ -374,7 +374,7 @@ bool ConPtyProcess::kill()
         return false;
     }
 
-#ifndef TOO_OLD_WINSDK
+#ifdef KPTY_HAVE_CONPTY_SDK
     if (m_ptyHandler && m_winContext.closePseudoConsole) {
         m_winContext.closePseudoConsole(m_ptyHandler);
         m_ptyHandler = nullptr;
