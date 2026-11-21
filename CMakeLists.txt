@@ -54,14 +54,42 @@ find_package(Qt6 REQUIRED COMPONENTS Core)
 if (MSVC)
     find_package(Qt6 REQUIRED COMPONENTS Network)
 
+    find_path(WINPTY_INCLUDE_DIR
+        NAMES winpty.h
+        PATH_SUFFIXES include
+    )
     find_library(WINPTY_LIBRARY
         NAMES winpty
     )
 
+    message(STATUS "WINPTY_INCLUDE_DIR = ${WINPTY_INCLUDE_DIR}")
     message(STATUS "WINPTY_LIBRARY = ${WINPTY_LIBRARY}")
 
-    if (NOT WINPTY_LIBRARY)
-        message(FATAL_ERROR "winpty library not found!")
+    if (NOT WINPTY_INCLUDE_DIR OR NOT WINPTY_LIBRARY)
+        message(FATAL_ERROR "winpty headers or library not found")
+    endif()
+
+    set(WINPTY_LIBRARIES "${WINPTY_LIBRARY}")
+    set(WINPTY_LIBS "${WINPTY_LIBRARY}")
+    set(WINPTY_DIST_FILES)
+    if (DEFINED VCPKG_INSTALLED_DIR)
+        find_file(WINPTY_AGENT_FILE
+            NAMES winpty-agent.exe
+            PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/winpty"
+                  "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+            NO_DEFAULT_PATH
+        )
+        find_file(WINPTY_DLL_FILE
+            NAMES winpty.dll
+            PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+            NO_DEFAULT_PATH
+        )
+        if (WINPTY_AGENT_FILE)
+            list(APPEND WINPTY_DIST_FILES "${WINPTY_AGENT_FILE}")
+        endif()
+        if (WINPTY_DLL_FILE)
+            list(APPEND WINPTY_DIST_FILES "${WINPTY_DLL_FILE}")
+        endif()
     endif()
 endif()
 
