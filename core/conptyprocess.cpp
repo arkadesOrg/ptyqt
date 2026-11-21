@@ -368,6 +368,8 @@ bool ConPtyProcess::resize(qint16 cols, qint16 rows)
 
 bool ConPtyProcess::kill()
 {
+    // Serialize start/resize/write/stop operations. The ConPTY reader itself
+    // does not take this lock, so it can drain output while we wait here.
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
     const bool hadProcess = m_ptyHandler || m_processInfo.hProcess || m_readThread;
     if (!hadProcess) {
@@ -381,14 +383,14 @@ bool ConPtyProcess::kill()
     }
 #endif
 
-    // Closing the pseudo console signals EOF to the reader. Give a naturally
-    // exiting child a chance to finish before terminating it.
+    // Give the process a chance to exit naturally after closing the console.
     if (m_processInfo.hProcess) {
         const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
         if (waitResult == WAIT_TIMEOUT) {
             TerminateProcess(m_processInfo.hProcess, 1);
             WaitForSingleObject(m_processInfo.hProcess, INFINITE);
         }
+
         DWORD code = static_cast<DWORD>(-1);
         if (GetExitCodeProcess(m_processInfo.hProcess, &code)) {
             m_exitCode.store(static_cast<int>(code));
