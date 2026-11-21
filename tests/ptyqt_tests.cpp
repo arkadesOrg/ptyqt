@@ -266,7 +266,7 @@ private slots:
             QVERIFY2(probeDirectory.isValid(), "Could not create a temporary CMD probe directory");
 
             QFile probeScript(probeDirectory.filePath(QStringLiteral("ptyqt-conpty-probe.cmd")));
-            QVERIFY2(probeScript.open(QIODevice::WriteOnly | QIODevice::Text),
+            QVERIFY2(probeScript.open(QIODevice::WriteOnly),
                      qPrintable(probeScript.errorString()));
             const QByteArray probeContents(
                 "@echo off\r\n"
