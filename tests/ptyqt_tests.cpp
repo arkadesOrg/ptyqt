@@ -269,9 +269,9 @@ private slots:
             QVERIFY2(probeScript.open(QIODevice::WriteOnly | QIODevice::Text),
                      qPrintable(probeScript.errorString()));
             const QByteArray probeContents(
-                "@echo off\\r\\n"
-                "echo ptyqt-argument-check\\r\\n"
-                "exit /b 7\\r\\n");
+                "@echo off\r\n"
+                "echo ptyqt-argument-check\r\n"
+                "exit /b 7\r\n");
             QCOMPARE(probeScript.write(probeContents), static_cast<qint64>(probeContents.size()));
             QVERIFY(probeScript.flush());
             probeScript.close();
