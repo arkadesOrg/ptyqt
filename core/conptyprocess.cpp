@@ -6,11 +6,11 @@
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QMutexLocker>
+#include <QDebug>
 
 #include <array>
 #include <cstdlib>
 #include <cstring>
-#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -132,10 +132,8 @@ qint64 PtyBuffer::readData(char *data, qint64 maxlen)
     std::memcpy(data, m_readBuffer.constData(), static_cast<size_t>(count));
     m_readBuffer.remove(0, static_cast<qsizetype>(count));
 #ifdef PTYQT_DEBUG
-    std::fprintf(stderr, "[ConPTY buffer] readData returned %lld bytes; %lld remain\n",
-                 static_cast<long long>(count),
-                 static_cast<long long>(m_readBuffer.size()));
-    std::fflush(stderr);
+    qDebug().nospace() << "[ConPTY buffer] readData returned " << count
+                       << " bytes; " << m_readBuffer.size() << " remain";
 #endif
     return count;
 }
@@ -168,10 +166,8 @@ void PtyBuffer::append(const QByteArray &data)
         bufferedBytes = static_cast<qint64>(m_readBuffer.size());
     }
 #ifdef PTYQT_DEBUG
-    std::fprintf(stderr, "[ConPTY buffer] appended %lld bytes; %lld buffered\n",
-                 static_cast<long long>(data.size()),
-                 static_cast<long long>(bufferedBytes));
-    std::fflush(stderr);
+    qDebug().nospace() << "[ConPTY buffer] appended " << data.size()
+                       << " bytes; " << bufferedBytes << " buffered";
 #endif
     Q_EMIT readyRead();
 }
@@ -333,10 +329,8 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     std::vector<wchar_t> mutableCommandLine(commandLine.cbegin(), commandLine.cend());
     mutableCommandLine.push_back(L'\0');
 
-    const QByteArray printableCommandLine = QString::fromStdWString(commandLine).toUtf8();
-    std::fprintf(stderr, "[ConPTY] CreateProcessW command line: %s\n",
-                 printableCommandLine.constData());
-    std::fflush(stderr);
+    qDebug().noquote() << "[ConPTY] CreateProcessW command line:"
+                       << QString::fromStdWString(commandLine);
 
     const std::wstring nativeDirectory =
         QDir::toNativeSeparators(currentDirectory).toStdWString();
@@ -367,50 +361,41 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     const HANDLE processHandle = m_processInfo.hProcess;
     const DWORD processId = m_processInfo.dwProcessId;
     m_processThread = QThread::create([this, processHandle, processId]() {
-        std::fprintf(stderr, "[ConPTY monitor] PID %lu: waiting for process handle\n",
-                     static_cast<unsigned long>(processId));
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY monitor] PID " << processId
+                           << ": waiting for process handle";
 
         const DWORD waitResult = WaitForSingleObject(processHandle, INFINITE);
         const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
-        std::fprintf(stderr,
-                     "[ConPTY monitor] PID %lu: WaitForSingleObject returned 0x%08lx (error %lu)\n",
-                     static_cast<unsigned long>(processId),
-                     static_cast<unsigned long>(waitResult),
-                     static_cast<unsigned long>(waitError));
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY monitor] PID " << processId
+                           << ": WaitForSingleObject returned "
+                           << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'))
+                           << " (error " << waitError << ")";
 
         if (waitResult == WAIT_OBJECT_0) {
             DWORD code = static_cast<DWORD>(-1);
             if (GetExitCodeProcess(processHandle, &code)) {
                 m_exitCode.store(static_cast<int>(code));
-                std::fprintf(stderr, "[ConPTY monitor] PID %lu: captured exit code %lu\n",
-                             static_cast<unsigned long>(processId),
-                             static_cast<unsigned long>(code));
+                qDebug().nospace() << "[ConPTY monitor] PID " << processId
+                                   << ": captured exit code " << code;
             } else {
                 const DWORD error = GetLastError();
-                std::fprintf(stderr, "[ConPTY monitor] PID %lu: GetExitCodeProcess failed (error %lu)\n",
-                             static_cast<unsigned long>(processId),
-                             static_cast<unsigned long>(error));
+                qWarning().nospace() << "[ConPTY monitor] PID " << processId
+                                     << ": GetExitCodeProcess failed (error " << error << ")";
             }
         }
 
         m_running.store(false);
-        std::fprintf(stderr, "[ConPTY monitor] PID %lu: isRunning=false, exitCode=%d\n",
-                     static_cast<unsigned long>(processId), m_exitCode.load());
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY monitor] PID " << processId
+                           << ": isRunning=false, exitCode=" << m_exitCode.load();
     });
-    std::fprintf(stderr, "[ConPTY monitor] PID %lu: starting monitor thread\n",
-                 static_cast<unsigned long>(processId));
-    std::fflush(stderr);
+    qDebug().nospace() << "[ConPTY monitor] PID " << processId << ": starting monitor thread";
     m_processThread->start();
 
     m_readThread = QThread::create([this, processId]() {
         std::array<char, 4096> buffer{};
 #ifdef PTYQT_DEBUG
-        std::fprintf(stderr, "[ConPTY reader] PID %lu: started (pipe=%p)\n",
-                     static_cast<unsigned long>(processId), m_hPipeIn);
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY reader] PID " << processId
+                           << ": started (output pipe=" << static_cast<void *>(m_hPipeIn) << ")";
 #endif
         for (;;) {
             DWORD bytesRead = 0;
@@ -418,22 +403,16 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                                           &bytesRead, nullptr);
             const DWORD readError = success ? ERROR_SUCCESS : GetLastError();
 #ifdef PTYQT_DEBUG
-            std::fprintf(stderr,
-                         "[ConPTY reader] PID %lu: ReadFile success=%d bytes=%lu error=%lu\n",
-                         static_cast<unsigned long>(processId),
-                         success ? 1 : 0,
-                         static_cast<unsigned long>(bytesRead),
-                         static_cast<unsigned long>(readError));
-            std::fflush(stderr);
+            qDebug().nospace() << "[ConPTY reader] PID " << processId
+                               << ": ReadFile success=" << (success ? 1 : 0)
+                               << " bytes=" << bytesRead << " error=" << readError;
 #endif
             if (bytesRead > 0) {
                 m_buffer.append(QByteArray(buffer.data(), static_cast<qsizetype>(bytesRead)));
             }
             if (!success || bytesRead == 0) {
 #ifdef PTYQT_DEBUG
-                std::fprintf(stderr, "[ConPTY reader] PID %lu: stopping\n",
-                             static_cast<unsigned long>(processId));
-                std::fflush(stderr);
+                qDebug().nospace() << "[ConPTY reader] PID " << processId << ": stopping";
 #endif
                 break;
             }
@@ -469,15 +448,12 @@ bool ConPtyProcess::kill()
         return false;
     }
 
-    std::fprintf(stderr, "[ConPTY cleanup] PID %lu: beginning cleanup (running=%d)\n",
-                 static_cast<unsigned long>(m_pid), isRunning() ? 1 : 0);
-    std::fflush(stderr);
+    qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
+                       << ": beginning cleanup (running=" << (isRunning() ? 1 : 0) << ")";
 
 #ifdef KPTY_HAVE_CONPTY_SDK
     if (m_ptyHandler && m_winContext.closePseudoConsole) {
-        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: closing pseudo-console\n",
-                     static_cast<unsigned long>(m_pid));
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid << ": closing pseudo-console";
         m_winContext.closePseudoConsole(m_ptyHandler);
         m_ptyHandler = nullptr;
     }
@@ -488,18 +464,15 @@ bool ConPtyProcess::kill()
     // when graceful shutdown does not complete within the grace period.
     if (m_processInfo.hProcess) {
         const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
-        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: process wait returned 0x%08lx\n",
-                     static_cast<unsigned long>(m_pid),
-                     static_cast<unsigned long>(waitResult));
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
+                           << ": process wait returned "
+                           << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
         if (waitResult == WAIT_TIMEOUT) {
             const BOOL terminated = TerminateProcess(m_processInfo.hProcess, 1);
             const DWORD terminateError = terminated ? ERROR_SUCCESS : GetLastError();
-            std::fprintf(stderr, "[ConPTY cleanup] PID %lu: TerminateProcess=%d (error %lu)\n",
-                         static_cast<unsigned long>(m_pid),
-                         terminated ? 1 : 0,
-                         static_cast<unsigned long>(terminateError));
-            std::fflush(stderr);
+            qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
+                               << ": TerminateProcess=" << (terminated ? 1 : 0)
+                               << " (error " << terminateError << ")";
             WaitForSingleObject(m_processInfo.hProcess, INFINITE);
         }
     }
@@ -507,9 +480,7 @@ bool ConPtyProcess::kill()
     // The process monitor must finish before its process handle is closed.
     if (m_processThread) {
         m_processThread->wait();
-        std::fprintf(stderr, "[ConPTY cleanup] PID %lu: process monitor joined\n",
-                     static_cast<unsigned long>(m_pid));
-        std::fflush(stderr);
+        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid << ": process monitor joined";
         delete m_processThread;
         m_processThread = nullptr;
     }
