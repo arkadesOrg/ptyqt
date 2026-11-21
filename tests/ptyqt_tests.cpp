@@ -246,9 +246,14 @@ private slots:
                         startupLoop.quit();
                 });
 
+            const QStringList arguments{QStringLiteral("/D")};
+            const QString workingDirectory = QCoreApplication::applicationDirPath();
             qInfo() << "[ConPTY] Launching shell with initial size 100x30";
+            qInfo() << "[ConPTY] CMD arguments:" << arguments
+                    << "working directory:" << workingDirectory;
             QVERIFY2(conPty->startProcess(
-                         shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
+                         shellPath, arguments, workingDirectory,
+                         QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
                      qPrintable(conPty->lastError()));
             QVERIFY(conPty->pid() != 0);
             qInfo() << "[ConPTY] Shell started with PID" << conPty->pid();
