@@ -241,6 +241,22 @@ HRESULT ConPtyProcess::initializeStartupInfoAttachedToPseudoConsole(STARTUPINFOE
     }
 
     startupInfo->StartupInfo.cb = sizeof(STARTUPINFOEX);
+
+    // Explicitly prevent the child from reusing the host process' standard
+    // handles. This is an empirical ConPTY workaround: with an attached host
+    // console, some Windows configurations have been observed to route the
+    // child's banner/prompt to the parent console instead of the ConPTY pipe.
+    // INVALID_HANDLE_VALUE is used here as in the MiniPty backend experiment;
+    // this is not the documented STARTF_USESTDHANDLES contract and must be
+    // validated on the target Windows runners.
+    startupInfo->StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
+    startupInfo->StartupInfo.hStdInput = INVALID_HANDLE_VALUE;
+    startupInfo->StartupInfo.hStdOutput = INVALID_HANDLE_VALUE;
+    startupInfo->StartupInfo.hStdError = INVALID_HANDLE_VALUE;
+
+    qDebug() << "[ConPTY] [process] explicitly suppressing inherited standard handles"
+             << "(STARTF_USESTDHANDLES, all INVALID_HANDLE_VALUE)";
+
     if (!InitializeProcThreadAttributeList(startupInfo->lpAttributeList, 1, 0, &attributeListSize)) {
         const HRESULT result = HRESULT_FROM_WIN32(GetLastError());
         std::free(startupInfo->lpAttributeList);
