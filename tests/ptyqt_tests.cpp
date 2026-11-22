@@ -464,7 +464,8 @@ private slots:
         killProcessByName(WINPTY_DBG_SERVER_NAME);
         qInfo() << "[WinPTY] Debug server stopped";
 #endif
-    }#endif
+    }
+#endif
 };
 
 QTEST_MAIN(PtyQtTests)
