@@ -83,7 +83,7 @@ public:
     bool isAvailable() override;
     void moveToThread(QThread *targetThread) override;
 
-    bool isRunning() const;
+    bool isRunning() const override;
     int exitCode() const;
 
 private:
