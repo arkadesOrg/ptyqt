@@ -11,15 +11,16 @@ public:
     ~WinPtyProcess();
 
     bool startProcess(const QString &shellPath, QStringList environment, qint16 cols, qint16 rows);
-    bool resize(qint16 cols, qint16 rows);
-    bool kill();
-    PtyType type();
-    QString dumpDebugInfo();
-    QIODevice *notifier();
-    QByteArray readAll();
-    qint64 write(const QByteArray &byteArray);
-    bool isAvailable();
-    void moveToThread(QThread *targetThread);
+    bool resize(qint16 cols, qint16 rows) override;
+    bool kill() override;
+    PtyType type() override;
+    QString dumpDebugInfo() override;
+    QIODevice *notifier() override;
+    QByteArray readAll() override;
+    qint64 write(const QByteArray &byteArray) override;
+    bool isAvailable() override;
+    bool isRunning() const override;
+    void moveToThread(QThread *targetThread) override;
 
 private:
     winpty_t *m_ptyHandler;
