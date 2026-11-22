@@ -54,7 +54,7 @@ public:
     virtual QByteArray readAll();
     virtual qint64 write(const QByteArray &byteArray);
     virtual bool isAvailable();
-    void moveToThread(QThread *targetThread);
+    void moveToThread(QThread *targetThread) override;
 
 private:
     ShellProcess m_shellProcess;
