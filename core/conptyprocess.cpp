@@ -134,7 +134,7 @@ qint64 PtyBuffer::readData(char *data, qint64 maxlen)
     std::memcpy(data, m_readBuffer.constData(), static_cast<size_t>(count));
     m_readBuffer.remove(0, static_cast<qsizetype>(count));
 #ifdef PTYQT_DEBUG
-    qDebug().nospace() << "[ConPTY buffer] readData returned " << count
+    qDebug().nospace() << "[ConPTY] [buffer] readData returned " << count
                        << " bytes; " << m_readBuffer.size() << " remain";
 #endif
     return count;
@@ -168,7 +168,7 @@ void PtyBuffer::append(const QByteArray &data)
         bufferedBytes = static_cast<qint64>(m_readBuffer.size());
     }
 #ifdef PTYQT_DEBUG
-    qDebug().nospace() << "[ConPTY buffer] appended " << data.size()
+    qDebug().nospace() << "[ConPTY] [buffer] appended " << data.size()
                        << " bytes; " << bufferedBytes << " buffered";
 #endif
     Q_EMIT readyRead();
@@ -181,28 +181,51 @@ ConPtyProcess::~ConPtyProcess()
     kill();
 }
 
-HRESULT ConPtyProcess::createPseudoConsoleAndPipes(HPCON *pty, HANDLE *input, HANDLE *output, qint16 cols, qint16 rows)
+HRESULT ConPtyProcess::createPseudoConsoleAndPipes(qint16 cols, qint16 rows)
 {
     HANDLE ptyInput = INVALID_HANDLE_VALUE;
+    HANDLE applicationOutput = INVALID_HANDLE_VALUE;
+    HANDLE applicationInput = INVALID_HANDLE_VALUE;
     HANDLE ptyOutput = INVALID_HANDLE_VALUE;
 
-    if (!CreatePipe(&ptyInput, output, nullptr, 0)) {
+    // Input channel: the application writes to applicationOutput; ConPTY reads
+    // from ptyInput.
+    if (!CreatePipe(&ptyInput, &applicationOutput, nullptr, 0)) {
         return HRESULT_FROM_WIN32(GetLastError());
     }
-    if (!CreatePipe(input, &ptyOutput, nullptr, 0)) {
+
+    // Output channel: ConPTY writes to ptyOutput; the application reads from
+    // applicationInput.
+    if (!CreatePipe(&applicationInput, &ptyOutput, nullptr, 0)) {
         const DWORD error = GetLastError();
         CloseHandle(ptyInput);
-        CloseHandle(*output);
-        *output = INVALID_HANDLE_VALUE;
+        CloseHandle(applicationOutput);
         return HRESULT_FROM_WIN32(error);
     }
 
+    m_hPipeIn = applicationInput;
+    m_hPipeOut = applicationOutput;
+    m_hPtyInput = ptyInput;
+    m_hPtyOutput = ptyOutput;
+
+    qDebug().nospace() << "[ConPTY] [pipes] app(write)=" << static_cast<void *>(m_hPipeOut)
+                       << " app(read)=" << static_cast<void *>(m_hPipeIn)
+                       << " ConPTY(read)=" << static_cast<void *>(m_hPtyInput)
+                       << " ConPTY(write)=" << static_cast<void *>(m_hPtyOutput);
+
     const HRESULT result = m_winContext.createPseudoConsole(
         COORD{static_cast<SHORT>(cols), static_cast<SHORT>(rows)},
-        ptyInput, ptyOutput, 0, pty);
+        m_hPtyInput, m_hPtyOutput, 0, &m_ptyHandler);
 
-    CloseHandle(ptyInput);
-    CloseHandle(ptyOutput);
+    if (FAILED(result)) {
+        qWarning().nospace() << "[ConPTY] [lifecycle] CreatePseudoConsole failed (HRESULT 0x"
+                             << QString::number(static_cast<quint32>(result), 16) << ")";
+        closePseudoConsolePipeHandles();
+        return result;
+    }
+
+    qInfo().nospace() << "[ConPTY] [lifecycle] pseudoconsole created; size="
+                      << cols << "x" << rows;
     return result;
 }
 
@@ -265,8 +288,12 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     m_lastError = QStringLiteral("ConPTY requires Windows SDK 10.0.18346 or newer");
     return false;
 #else
+    qInfo().noquote() << "[ConPTY] [lifecycle] start requested:"
+                      << program << "size=" << cols << "x" << rows;
+    m_lastError.clear();
     if (!isAvailable()) {
         m_lastError = m_winContext.lastError();
+        qWarning().noquote() << "[ConPTY] [lifecycle] unavailable:" << m_lastError;
         return false;
     }
     QMutexLocker lifecycleLock(&m_lifecycleMutex);
@@ -294,7 +321,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     m_size = {cols, rows};
     m_exitCode.store(-1);
 
-    HRESULT result = createPseudoConsoleAndPipes(&m_ptyHandler, &m_hPipeIn, &m_hPipeOut, cols, rows);
+    HRESULT result = createPseudoConsoleAndPipes(cols, rows);
     if (FAILED(result)) {
         m_lastError = QStringLiteral("CreatePseudoConsole failed (0x%1)").arg(
             static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
@@ -304,10 +331,13 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
 
     result = initializeStartupInfoAttachedToPseudoConsole(&m_startupInfo, m_ptyHandler);
     if (FAILED(result)) {
-        m_lastError = QStringLiteral("Could not initialize the ConPTY process attributes");
+        m_lastError = QStringLiteral("Could not initialize the ConPTY process attributes (HRESULT 0x%1)")
+            .arg(static_cast<quint32>(result), 8, 16, QLatin1Char('0'));
+        qWarning().noquote() << "[ConPTY] [lifecycle]" << m_lastError;
         closeHandles();
         return false;
     }
+    qDebug() << "[ConPTY] [lifecycle] startup attributes initialized";
 
     QStringList processEnvironment = environment;
     if (processEnvironment.isEmpty()) {
@@ -331,8 +361,8 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     std::vector<wchar_t> mutableCommandLine(commandLine.cbegin(), commandLine.cend());
     mutableCommandLine.push_back(L'\0');
 
-    qDebug().noquote() << "[ConPTY] CreateProcessW command line:"
-                       << QString::fromStdWString(commandLine);
+    qInfo().noquote() << "[ConPTY] [process] CreateProcessW command line:"
+                      << QString::fromStdWString(commandLine);
 
     const std::wstring nativeDirectory =
         QDir::toNativeSeparators(currentDirectory).toStdWString();
@@ -348,13 +378,21 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
         &m_startupInfo.StartupInfo,
         &m_processInfo);
 
+    // Microsoft documents releasing the copies supplied to CreatePseudoConsole
+    // after the CreateProcess call completes, not immediately after creation
+    // of the pseudoconsole.
+    const DWORD createProcessError = created ? ERROR_SUCCESS : GetLastError();
+    closePseudoConsolePipeHandles();
+
     if (!created) {
-        m_lastError = QStringLiteral("CreateProcessW failed with Windows error %1").arg(GetLastError());
+        m_lastError = QStringLiteral("CreateProcessW failed with Windows error %1").arg(createProcessError);
+        qWarning().noquote() << "[ConPTY] [process]" << m_lastError;
         closeHandles();
         return false;
     }
 
     m_pid = m_processInfo.dwProcessId;
+    qInfo().nospace() << "[ConPTY] [process] child created; PID=" << m_pid;
     m_running.store(true);
 
     // Process lifetime and pipe lifetime are independent. A child can exit
@@ -363,19 +401,19 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     const HANDLE processHandle = m_processInfo.hProcess;
     const DWORD processId = m_processInfo.dwProcessId;
     m_processThread = QThread::create([this, processHandle, processId]() {
-        qDebug().nospace() << "[ConPTY monitor] PID " << processId
+        qDebug().nospace() << "[ConPTY] [process] PID " << processId
                            << ": waiting for process handle";
 
         const DWORD waitResult = WaitForSingleObject(processHandle, INFINITE);
         if (waitResult == WAIT_OBJECT_0) {
-            qDebug().nospace() << "[ConPTY monitor] PID " << processId
+            qDebug().nospace() << "[ConPTY] [process] PID " << processId
                                << ": process handle signaled";
         } else if (waitResult == WAIT_FAILED) {
             const DWORD waitError = GetLastError();
-            qWarning().nospace() << "[ConPTY monitor] PID " << processId
+            qWarning().nospace() << "[ConPTY] [process] PID " << processId
                                  << ": waiting for process failed (Win32 error " << waitError << ")";
         } else {
-            qWarning().nospace() << "[ConPTY monitor] PID " << processId
+            qWarning().nospace() << "[ConPTY] [process] PID " << processId
                                  << ": unexpected process wait result "
                                  << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
         }
@@ -384,26 +422,26 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
             DWORD code = static_cast<DWORD>(-1);
             if (GetExitCodeProcess(processHandle, &code)) {
                 m_exitCode.store(static_cast<int>(code));
-                qDebug().nospace() << "[ConPTY monitor] PID " << processId
-                                   << ": captured exit code " << code;
+                qInfo().nospace() << "[ConPTY] [process] PID " << processId
+                                  << ": exited with code " << code;
             } else {
                 const DWORD error = GetLastError();
-                qWarning().nospace() << "[ConPTY monitor] PID " << processId
+                qWarning().nospace() << "[ConPTY] [process] PID " << processId
                                      << ": GetExitCodeProcess failed (error " << error << ")";
             }
         }
 
         m_running.store(false);
-        qDebug().nospace() << "[ConPTY monitor] PID " << processId
-                           << ": isRunning=false, exitCode=" << m_exitCode.load();
+        qInfo().nospace() << "[ConPTY] [process] PID " << processId
+                          << ": state=stopped, exitCode=" << m_exitCode.load();
     });
-    qDebug().nospace() << "[ConPTY monitor] PID " << processId << ": starting monitor thread";
+    qInfo().nospace() << "[ConPTY] [process] PID " << processId << ": starting monitor thread";
     m_processThread->start();
 
     m_readThread = QThread::create([this, processId]() {
         std::array<char, 4096> buffer{};
 #ifdef PTYQT_DEBUG
-        qDebug().nospace() << "[ConPTY reader] PID " << processId
+        qDebug().nospace() << "[ConPTY] [reader] PID " << processId
                            << ": started (output pipe=" << static_cast<void *>(m_hPipeIn) << ")";
 #endif
         for (;;) {
@@ -412,7 +450,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                                           &bytesRead, nullptr);
             const DWORD readError = success ? ERROR_SUCCESS : GetLastError();
 #ifdef PTYQT_DEBUG
-            qDebug().nospace() << "[ConPTY reader] PID " << processId
+            qDebug().nospace() << "[ConPTY] [reader] PID " << processId
                                << ": ReadFile success=" << (success ? 1 : 0)
                                << " bytes=" << bytesRead << " error=" << readError;
 #endif
@@ -420,8 +458,18 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
                 m_buffer.append(QByteArray(buffer.data(), static_cast<qsizetype>(bytesRead)));
             }
             if (!success || bytesRead == 0) {
+                if (!success && readError == ERROR_BROKEN_PIPE) {
+                    qInfo().nospace() << "[ConPTY] [reader] PID " << processId
+                                      << ": output pipe closed (ERROR_BROKEN_PIPE)";
+                } else if (!success) {
+                    qWarning().nospace() << "[ConPTY] [reader] PID " << processId
+                                         << ": ReadFile failed (Win32 error " << readError << ")";
+                } else {
+                    qInfo().nospace() << "[ConPTY] [reader] PID " << processId
+                                      << ": output stream reached EOF";
+                }
 #ifdef PTYQT_DEBUG
-                qDebug().nospace() << "[ConPTY reader] PID " << processId << ": stopping";
+                qDebug().nospace() << "[ConPTY] [reader] PID " << processId << ": stopping";
 #endif
                 break;
             }
@@ -443,8 +491,12 @@ bool ConPtyProcess::resize(qint16 cols, qint16 rows)
         m_ptyHandler, COORD{static_cast<SHORT>(cols), static_cast<SHORT>(rows)});
     if (SUCCEEDED(result)) {
         m_size = {cols, rows};
+        qInfo().nospace() << "[ConPTY] [resize] terminal size changed to "
+                          << cols << "x" << rows;
         return true;
     }
+    qWarning().nospace() << "[ConPTY] [resize] ResizePseudoConsole failed (HRESULT 0x"
+                         << QString::number(static_cast<quint32>(result), 16) << ")";
 #endif
     return false;
 }
@@ -457,14 +509,16 @@ bool ConPtyProcess::kill()
         return false;
     }
 
-    qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
-                       << ": beginning cleanup (running=" << (isRunning() ? 1 : 0) << ")";
+    qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                      << ": begin (running=" << (isRunning() ? 1 : 0) << ")";
 
 #ifdef KPTY_HAVE_CONPTY_SDK
     if (m_ptyHandler && m_winContext.closePseudoConsole) {
-        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid << ": closing pseudo-console";
+        qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid << ": closing pseudoconsole";
         m_winContext.closePseudoConsole(m_ptyHandler);
         m_ptyHandler = nullptr;
+        qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                          << ": ClosePseudoConsole returned";
     }
 #endif
 
@@ -474,25 +528,25 @@ bool ConPtyProcess::kill()
     if (m_processInfo.hProcess) {
         const DWORD waitResult = WaitForSingleObject(m_processInfo.hProcess, 1500);
         if (waitResult == WAIT_OBJECT_0) {
-            qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
-                               << ": process exited during graceful shutdown";
+            qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                              << ": child exited after pseudoconsole close";
         } else if (waitResult == WAIT_TIMEOUT) {
-            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
-                                 << ": process did not exit within 1500 ms; terminating";
+            qWarning().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                                 << ": child did not exit within 1500 ms; terminating";
         } else if (waitResult == WAIT_FAILED) {
-            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
+            qWarning().nospace() << "[ConPTY] [cleanup] PID " << m_pid
                                  << ": process wait failed (Win32 error " << GetLastError() << ")";
         } else {
-            qWarning().nospace() << "[ConPTY cleanup] PID " << m_pid
+            qWarning().nospace() << "[ConPTY] [cleanup] PID " << m_pid
                                  << ": unexpected process wait result "
                                  << QStringLiteral("0x%1").arg(waitResult, 8, 16, QLatin1Char('0'));
         }
         if (waitResult == WAIT_TIMEOUT) {
             const BOOL terminated = TerminateProcess(m_processInfo.hProcess, 1);
             const DWORD terminateError = terminated ? ERROR_SUCCESS : GetLastError();
-            qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid
-                               << ": TerminateProcess=" << (terminated ? 1 : 0)
-                               << " (error " << terminateError << ")";
+            qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                              << ": TerminateProcess=" << (terminated ? 1 : 0)
+                              << " (error " << terminateError << ")";
             WaitForSingleObject(m_processInfo.hProcess, INFINITE);
         }
     }
@@ -500,7 +554,7 @@ bool ConPtyProcess::kill()
     // The process monitor must finish before its process handle is closed.
     if (m_processThread) {
         m_processThread->wait();
-        qDebug().nospace() << "[ConPTY cleanup] PID " << m_pid << ": process monitor joined";
+        qDebug().nospace() << "[ConPTY] [cleanup] PID " << m_pid << ": process monitor joined";
         delete m_processThread;
         m_processThread = nullptr;
     }
@@ -508,25 +562,56 @@ bool ConPtyProcess::kill()
     // Drain output until the pseudo-console closes its pipe. If it remains
     // blocked, cancel the outstanding read before releasing the pipe handle.
     if (m_readThread && !m_readThread->wait(1500)) {
+        qWarning().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                             << ": reader has not stopped; cancelling pending pipe I/O";
         if (m_hPipeIn != INVALID_HANDLE_VALUE) {
-            CancelIoEx(m_hPipeIn, nullptr);
+            const BOOL cancelled = CancelIoEx(m_hPipeIn, nullptr);
+            const DWORD cancelError = cancelled ? ERROR_SUCCESS : GetLastError();
+            qDebug().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                               << ": CancelIoEx=" << (cancelled ? 1 : 0)
+                               << " (error " << cancelError << ")";
         }
         m_readThread->wait();
     }
 
     if (m_readThread) {
+        qDebug().nospace() << "[ConPTY] [cleanup] PID " << m_pid << ": output reader joined";
         delete m_readThread;
         m_readThread = nullptr;
     }
 
+    const int finalExitCode = m_exitCode.load();
     closeHandles();
     m_running.store(false);
+    qInfo().nospace() << "[ConPTY] [cleanup] PID " << m_pid
+                      << ": complete (exitCode=" << finalExitCode << ")";
     m_pid = 0;
     return true;
 }
 
+void ConPtyProcess::closePseudoConsolePipeHandles()
+{
+    if (m_hPtyInput != INVALID_HANDLE_VALUE) {
+        CloseHandle(m_hPtyInput);
+        m_hPtyInput = INVALID_HANDLE_VALUE;
+    }
+    if (m_hPtyOutput != INVALID_HANDLE_VALUE) {
+        CloseHandle(m_hPtyOutput);
+        m_hPtyOutput = INVALID_HANDLE_VALUE;
+    }
+}
+
 void ConPtyProcess::closeHandles()
 {
+    // Startup rollback: the normal kill() path closes HPCON while the reader
+    // is draining; before a child/reader exists, close it here.
+    if (m_ptyHandler && m_winContext.closePseudoConsole) {
+        qDebug() << "[ConPTY] [cleanup] closing pseudoconsole during startup rollback";
+        m_winContext.closePseudoConsole(m_ptyHandler);
+        m_ptyHandler = nullptr;
+    }
+    closePseudoConsolePipeHandles();
+
     if (m_startupInfo.lpAttributeList) {
         DeleteProcThreadAttributeList(m_startupInfo.lpAttributeList);
         std::free(m_startupInfo.lpAttributeList);
@@ -586,9 +671,14 @@ qint64 ConPtyProcess::write(const QByteArray &byteArray)
     DWORD bytesWritten = 0;
     if (!WriteFile(m_hPipeOut, byteArray.constData(), static_cast<DWORD>(byteArray.size()),
                    &bytesWritten, nullptr)) {
-        m_lastError = QStringLiteral("WriteFile failed with Windows error %1").arg(GetLastError());
+        const DWORD error = GetLastError();
+        m_lastError = QStringLiteral("WriteFile failed with Windows error %1").arg(error);
+        qWarning().noquote() << "[ConPTY] [io]" << m_lastError;
         return -1;
     }
+#ifdef PTYQT_DEBUG
+    qDebug().nospace() << "[ConPTY] [io] wrote " << bytesWritten << " bytes";
+#endif
     return static_cast<qint64>(bytesWritten);
 }
 

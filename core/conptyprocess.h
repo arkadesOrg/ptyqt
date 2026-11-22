@@ -87,16 +87,21 @@ public:
     int exitCode() const;
 
 private:
-    HRESULT createPseudoConsoleAndPipes(HPCON *pty, HANDLE *input, HANDLE *output, qint16 cols, qint16 rows);
+    HRESULT createPseudoConsoleAndPipes(qint16 cols, qint16 rows);
     HRESULT initializeStartupInfoAttachedToPseudoConsole(STARTUPINFOEX *startupInfo, HPCON pty);
+    void closePseudoConsolePipeHandles();
     void closeHandles();
     static QString resolveExecutable(const QString &program);
 
     WindowsContext m_winContext;
     PtyBuffer m_buffer;
     HPCON m_ptyHandler = nullptr;
+    // Application ends: read ConPTY output and write ConPTY input.
     HANDLE m_hPipeIn = INVALID_HANDLE_VALUE;
     HANDLE m_hPipeOut = INVALID_HANDLE_VALUE;
+    // The ConPTY-side ends remain owned until CreateProcessW has completed.
+    HANDLE m_hPtyInput = INVALID_HANDLE_VALUE;
+    HANDLE m_hPtyOutput = INVALID_HANDLE_VALUE;
     PROCESS_INFORMATION m_processInfo{};
     STARTUPINFOEX m_startupInfo{};
     QThread *m_readThread = nullptr;
