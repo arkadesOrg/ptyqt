@@ -228,7 +228,7 @@ private slots:
         for (const QString &shellPath : shells) {
             qInfo().noquote() << "[ConPTY] Starting interactive shell:" << shellPath;
 
-            QScopedPointer<IPtyProcess> conPty(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+            QScopedPointer<ConPtyProcess> conPty(PtyQt::createPtyProcess(IPtyProcess::ConPty));
             QVERIFY(conPty);
             QCOMPARE(conPty->type(), IPtyProcess::ConPty);
             QVERIFY2(conPty->isAvailable(), "The Windows ConPTY API is unavailable");
