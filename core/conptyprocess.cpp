@@ -337,7 +337,7 @@ bool ConPtyProcess::startProcess(const QString &program, const QStringList &argu
     const std::wstring nativeDirectory =
         QDir::toNativeSeparators(currentDirectory).toStdWString();
     const BOOL created = CreateProcessW(
-        nativeExecutable.c_str(),
+        nullptr,
         mutableCommandLine.data(),
         nullptr,
         nullptr,
