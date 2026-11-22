@@ -242,6 +242,17 @@ bool WinPtyProcess::isAvailable()
 
 }
 
+bool WinPtyProcess::isRunning() const
+{
+    if (!m_innerHandle) {
+        return false;
+    }
+
+    DWORD processExitCode = 0;
+    return GetExitCodeProcess(m_innerHandle, &processExitCode)
+        && processExitCode == STILL_ACTIVE;
+}
+
 void WinPtyProcess::moveToThread(QThread *targetThread)
 {
     m_inSocket->moveToThread(targetThread);
