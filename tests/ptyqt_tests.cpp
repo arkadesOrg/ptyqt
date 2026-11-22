@@ -325,98 +325,146 @@ private slots:
 
     void winpty()
     {
-        //QVERIFY(false); //force quit
+        qInfo() << "[WinPTY] Windows backend integration test starting";
 #ifdef PTYQT_DEBUG
-        //run debug server
+        // Run the WinPTY debug server.
         killProcessByName(WINPTY_DBG_SERVER_NAME);
 
-        qint64 debugServerPid;
-        QProcess::startDetached(QString(WINPTY_DEBUG_SRV_PATH), QStringList() << "--everyone",
-                                QCoreApplication::applicationDirPath(), &debugServerPid);
+        qint64 debugServerPid = 0;
+        const bool debugServerStarted = QProcess::startDetached(
+            QString(WINPTY_DEBUG_SRV_PATH), QStringList() << "--everyone",
+            QCoreApplication::applicationDirPath(), &debugServerPid);
+        qInfo() << "[WinPTY] Debug server start:" << debugServerStarted
+                << "PID:" << debugServerPid;
+        QVERIFY(debugServerStarted);
         QVERIFY(debugServerPid != 0);
 #endif
 
-        QStringList shells = getShells();
+        const QStringList shells = getShells();
+        if (shells.isEmpty()) {
+            QSKIP("No supported Windows command interpreter was found");
+        }
 
-        foreach (QString shellPath, shells)
+        for (const QString &shellPath : shells)
         {
-            qDebug() << "Test" << shellPath;
+            qInfo().noquote() << "[WinPTY] Starting interactive shell:" << shellPath;
 
-            //create object
             QScopedPointer<IPtyProcess> winPty(PtyQt::createPtyProcess(IPtyProcess::WinPty));
+            QVERIFY(winPty);
             QCOMPARE(winPty->type(), IPtyProcess::WinPty);
-            QVERIFY(winPty->isAvailable());
+            QVERIFY2(winPty->isAvailable(), "The WinPTY backend is unavailable");
 
-            //prepare to check shell welcome
-            QEventLoop el;
-            auto connection = QObject::connect(winPty->notifier(), &QIODevice::readyRead, [&winPty, &el]() {
-                sleepByEventLoop(1);
-                //qDebug() << "winPty.read" << winPty->readAll();
-                winPty->readAll();
-                el.quit();
-            });
+            QEventLoop startupLoop;
+            QByteArray startupOutput;
+            const auto startupConnection = QObject::connect(
+                winPty->notifier(), &QIODevice::readyRead, &startupLoop, [&]() {
+                    const QByteArray chunk = winPty->readAll();
+                    startupOutput += chunk;
+                    qDebug().nospace() << "[WinPTY reader] startup received "
+                                       << chunk.size() << " bytes; "
+                                       << startupOutput.size() << " accumulated";
+                    if (!startupOutput.isEmpty())
+                        startupLoop.quit();
+                });
 
-            //start WinPty agent and cmd.exe
-            bool startResult = winPty->startProcess(shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 200, 80);
+            qInfo() << "[WinPTY] Launching shell with initial size 200x80";
+            const bool startResult = winPty->startProcess(
+                shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 200, 80);
 #ifdef PTYQT_DEBUG
-            if (!startResult)
-                qDebug() << winPty->lastError() << winPty->dumpDebugInfo();
+            if (!startResult) {
+                qWarning().noquote() << "[WinPTY] Process startup failed:"
+                                     << winPty->lastError();
+                qDebug().noquote() << "[WinPTY] Debug info:" << winPty->dumpDebugInfo();
+            }
 #endif
-            QVERIFY(startResult);
+            QVERIFY2(startResult, qPrintable(winPty->lastError()));
 
-            //check pid (winPty->pid() - PID of child process of winpty-agent.exe)
             QVERIFY(winPty->pid() != 0);
             QVERIFY(winPty->isRunning());
-            //DWORD winPtyAgentPid = findProcessId(QString(WINPTY_AGENT_NAME).toStdString());
-            //DWORD winPtyShellPid = findProcessId(QFileInfo(shellPath).fileName().toStdString(), winPtyAgentPid);
-            //QCOMPARE(winPty->pid(), winPtyShellPid);
+            qInfo() << "[WinPTY] Shell started with PID" << winPty->pid();
 
-            //check shell welcome
-            el.exec();
-            winPty->notifier()->disconnect(connection);
+            startupOutput += winPty->readAll();
+            if (startupOutput.isEmpty()) {
+                qInfo() << "[WinPTY] Waiting for initial shell output";
+                startupLoop.exec();
+            }
+            disconnect(startupConnection);
 
-            //check shell read after write
-            bool testRes = false;
-            connection = QObject::connect(winPty->notifier(), &QIODevice::readyRead, [&winPty, &el, &testRes]() {
-                sleepByEventLoop(1);
-                QString res = QString::fromUtf8(winPty->readAll());
-                //qDebug() << res;
+            if (startupOutput.isEmpty()) {
+                qWarning() << "[WinPTY] No initial shell output received";
+            } else {
+                qInfo().noquote() << "[WinPTY] Initial shell output:"
+                                  << QString::fromLocal8Bit(startupOutput).trimmed();
+            }
+            QVERIFY2(!startupOutput.isEmpty(),
+                     "WinPTY shell did not produce startup output");
 
-                //for e.g. bash return empty strings after needed data
-                if (res.isEmpty() && testRes)
-                    return;
+            QEventLoop commandLoop;
+            QByteArray commandOutput;
+            const auto commandConnection = QObject::connect(
+                winPty->notifier(), &QIODevice::readyRead, &commandLoop, [&]() {
+                    const QByteArray chunk = winPty->readAll();
+                    commandOutput += chunk;
+                    qDebug().nospace() << "[WinPTY reader] command received "
+                                       << chunk.size() << " bytes; "
+                                       << commandOutput.size() << " accumulated";
 
-                testRes = res.contains("winpty-agent.exe");
-                testRes = testRes && res.contains("winpty.dll");
-                testRes = testRes && res.contains("ptyqt_tests.exe");
-                el.quit();
-            });
-            winPty->write("dir\r\n");
-            el.exec();
-            QVERIFY(testRes);
-            winPty->notifier()->disconnect(connection);
+                    const QByteArray expectedAgent("winpty-agent.exe");
+                    const QByteArray expectedLibrary("winpty.dll");
+                    const QByteArray expectedExecutable("ptyqt_tests.exe");
+                    if (commandOutput.contains(expectedAgent)
+                        && commandOutput.contains(expectedLibrary)
+                        && commandOutput.contains(expectedExecutable)) {
+                        commandLoop.quit();
+                    }
+                });
 
-            //resize window
-            sleepByEventLoop(1);
-            QVERIFY(winPty->resize(240, 90));
+            qInfo() << "[WinPTY] Sending directory-listing command";
+            const QByteArray command("dir\\r\\n");
+            QCOMPARE(winPty->write(command), static_cast<qint64>(command.size()));
+            commandOutput += winPty->readAll();
+            if (!commandOutput.contains("winpty-agent.exe")
+                || !commandOutput.contains("winpty.dll")
+                || !commandOutput.contains("ptyqt_tests.exe")) {
+                commandLoop.exec();
+            }
+            disconnect(commandConnection);
 
-            //kill shell and winpty-agent processes
+            qInfo().noquote() << "[WinPTY] Directory-listing output:"
+                              << QString::fromLocal8Bit(commandOutput).trimmed();
+            QVERIFY2(commandOutput.contains("winpty-agent.exe"),
+                     "WinPTY output did not contain winpty-agent.exe");
+            QVERIFY2(commandOutput.contains("winpty.dll"),
+                     "WinPTY output did not contain winpty.dll");
+            QVERIFY2(commandOutput.contains("ptyqt_tests.exe"),
+                     "WinPTY output did not contain ptyqt_tests.exe");
+
+            qInfo() << "[WinPTY] Resizing terminal to 240x90";
+            QVERIFY2(winPty->resize(240, 90), "WinPTY resize to 240x90 failed");
+            QCOMPARE(winPty->size().first, qint16(240));
+            QCOMPARE(winPty->size().second, qint16(90));
+            qInfo() << "[WinPTY] Resize verified";
+
 #ifdef PTYQT_DEBUG
-            qDebug() << winPty->dumpDebugInfo();
+            qDebug().noquote() << "[WinPTY] Process debug info:"
+                               << winPty->dumpDebugInfo();
             sleepByEventLoop(DEBUG_SLEEP_SEC);
 #endif
-            QVERIFY(winPty->kill());
+
+            qInfo() << "[WinPTY] Closing interactive shell";
+            QVERIFY2(winPty->kill(), "Could not close the interactive WinPTY shell");
             QVERIFY(!winPty->isRunning());
+            qInfo() << "[WinPTY] Shell stopped";
+
             sleepByEventLoop(1);
-            //QCOMPARE(findProcessId(QFileInfo(shellPath).fileName().toStdString(), winPtyAgentPid), 0);
-            //QCOMPARE(findProcessId(QString(WINPTY_AGENT_NAME).toStdString()), 0);
+            qInfo().noquote() << "[WinPTY] Smoke test completed for" << shellPath;
         }
 
 #ifdef PTYQT_DEBUG
         killProcessByName(WINPTY_DBG_SERVER_NAME);
+        qInfo() << "[WinPTY] Debug server stopped";
 #endif
-    }
-#endif
+    }#endif
 };
 
 QTEST_MAIN(PtyQtTests)
