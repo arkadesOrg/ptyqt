@@ -1,8 +1,5 @@
 #include <QTest>
 #include "ptyqt.h"
-#ifdef Q_OS_WIN
-#include "conptyprocess.h"
-#endif
 #include <QProcessEnvironment>
 #include <QFile>
 #include <QFileInfo>
@@ -228,7 +225,7 @@ private slots:
         for (const QString &shellPath : shells) {
             qInfo().noquote() << "[ConPTY] Starting interactive shell:" << shellPath;
 
-            QScopedPointer<ConPtyProcess> conPty(PtyQt::createPtyProcess(IPtyProcess::ConPty));
+            QScopedPointer<IPtyProcess> conPty(PtyQt::createPtyProcess(IPtyProcess::ConPty));
             QVERIFY(conPty);
             QCOMPARE(conPty->type(), IPtyProcess::ConPty);
             QVERIFY2(conPty->isAvailable(), "The Windows ConPTY API is unavailable");
@@ -246,14 +243,9 @@ private slots:
                         startupLoop.quit();
                 });
 
-            const QStringList arguments{QStringLiteral("/D")};
-            const QString workingDirectory = QCoreApplication::applicationDirPath();
             qInfo() << "[ConPTY] Launching shell with initial size 100x30";
-            qInfo() << "[ConPTY] CMD arguments:" << arguments
-                    << "working directory:" << workingDirectory;
             QVERIFY2(conPty->startProcess(
-                         shellPath, arguments, workingDirectory,
-                         QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
+                         shellPath, QProcessEnvironment::systemEnvironment().toStringList(), 100, 30),
                      qPrintable(conPty->lastError()));
             QVERIFY(conPty->pid() != 0);
             qInfo() << "[ConPTY] Shell started with PID" << conPty->pid();
