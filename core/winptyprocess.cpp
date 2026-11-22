@@ -248,9 +248,10 @@ bool WinPtyProcess::isRunning() const
         return false;
     }
 
-    DWORD processExitCode = 0;
-    return GetExitCodeProcess(m_innerHandle, &processExitCode)
-        && processExitCode == STILL_ACTIVE;
+    // A zero-time wait distinguishes a signaled process from one that is
+    // still executing without relying on STILL_ACTIVE (259), which is also
+    // technically a possible application exit code.
+    return WaitForSingleObject(m_innerHandle, 0) == WAIT_TIMEOUT;
 }
 
 void WinPtyProcess::moveToThread(QThread *targetThread)
