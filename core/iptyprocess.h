@@ -38,7 +38,9 @@ public:
     virtual QByteArray readAll() = 0;
     virtual qint64 write(const QByteArray &byteArray) = 0;
     virtual bool isAvailable() = 0;
+    virtual bool isRunning() const = 0;
     virtual void moveToThread(QThread *targetThread) = 0;
+
     qint64 pid() const { return m_pid; }
     QPair<qint16, qint16> size() const { return m_size; }
     QString lastError() const { return m_lastError; }
