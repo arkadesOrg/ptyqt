@@ -43,17 +43,18 @@ class UnixPtyProcess : public IPtyProcess
 {
 public:
     UnixPtyProcess();
-    virtual ~UnixPtyProcess();
+    ~UnixPtyProcess() override;
 
     virtual bool startProcess(const QString &shellPath, QStringList environment, qint16 cols, qint16 rows) override;
-    virtual bool resize(qint16 cols, qint16 rows);
-    virtual bool kill();
-    virtual PtyType type();
-    virtual QString dumpDebugInfo();
-    virtual QIODevice *notifier();
-    virtual QByteArray readAll();
-    virtual qint64 write(const QByteArray &byteArray);
-    virtual bool isAvailable();
+    bool resize(qint16 cols, qint16 rows) override;
+    bool kill() override;
+    PtyType type() override;
+    QString dumpDebugInfo() override;
+    QIODevice *notifier() override;
+    QByteArray readAll() override;
+    qint64 write(const QByteArray &byteArray) override;
+    bool isAvailable() override;
+    bool isRunning() const override;
     void moveToThread(QThread *targetThread) override;
 
 private:
