@@ -10,7 +10,7 @@ public:
     WinPtyProcess();
     ~WinPtyProcess();
 
-    bool startProcess(const QString &shellPath, QStringList environment, qint16 cols, qint16 rows);
+    bool startProcess(const QString &shellPath, QStringList environment, qint16 cols, qint16 rows) override;
     bool resize(qint16 cols, qint16 rows) override;
     bool kill() override;
     PtyType type() override;
