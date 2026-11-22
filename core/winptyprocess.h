@@ -8,7 +8,7 @@ class WinPtyProcess : public IPtyProcess
 {
 public:
     WinPtyProcess();
-    ~WinPtyProcess();
+    ~WinPtyProcess() override;
 
     bool startProcess(const QString &shellPath, QStringList environment, qint16 cols, qint16 rows) override;
     bool resize(qint16 cols, qint16 rows) override;
