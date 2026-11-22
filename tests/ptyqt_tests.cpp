@@ -163,6 +163,7 @@ private slots:
 #endif
         QVERIFY2(startResult, qPrintable(unixPty->lastError()));
         QVERIFY(unixPty->pid() != 0);
+        QVERIFY(unixPty->isRunning());
         qInfo() << "[UnixPTY] Started child process with PID" << unixPty->pid();
 
         //check shell welcome
@@ -203,6 +204,8 @@ private slots:
 
         qInfo() << "[UnixPTY] Resizing terminal to 240x90";
         QVERIFY(unixPty->resize(240, 90));
+        QVERIFY(unixPty->kill());
+        QVERIFY(!unixPty->isRunning());
         qInfo() << "[UnixPTY] Smoke test completed";
     }
 #endif
@@ -314,6 +317,7 @@ private slots:
 
             qInfo() << "[ConPTY] Closing interactive shell";
             QVERIFY2(conPty->kill(), "Could not close the interactive ConPTY shell");
+            QVERIFY(!conPty->isRunning());
 
             qInfo() << "[ConPTY] Smoke test completed for" << shellPath;
         }
@@ -362,6 +366,7 @@ private slots:
 
             //check pid (winPty->pid() - PID of child process of winpty-agent.exe)
             QVERIFY(winPty->pid() != 0);
+            QVERIFY(winPty->isRunning());
             //DWORD winPtyAgentPid = findProcessId(QString(WINPTY_AGENT_NAME).toStdString());
             //DWORD winPtyShellPid = findProcessId(QFileInfo(shellPath).fileName().toStdString(), winPtyAgentPid);
             //QCOMPARE(winPty->pid(), winPtyShellPid);
@@ -401,6 +406,7 @@ private slots:
             sleepByEventLoop(DEBUG_SLEEP_SEC);
 #endif
             QVERIFY(winPty->kill());
+            QVERIFY(!winPty->isRunning());
             sleepByEventLoop(1);
             //QCOMPARE(findProcessId(QFileInfo(shellPath).fileName().toStdString(), winPtyAgentPid), 0);
             //QCOMPARE(findProcessId(QString(WINPTY_AGENT_NAME).toStdString()), 0);
