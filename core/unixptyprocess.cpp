@@ -318,6 +318,11 @@ bool UnixPtyProcess::isAvailable()
     return true;
 }
 
+bool UnixPtyProcess::isRunning() const
+{
+    return m_shellProcess.state() == QProcess::Running;
+}
+
 void UnixPtyProcess::moveToThread(QThread *targetThread)
 {
     m_shellProcess.moveToThread(targetThread);
